@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 3 Memory Lane</title>
+  <meta name="description" content="Day 3 of Operation Tangerine: DynamoDB for agent memory, the Aurora PostgreSQL and DynamoDB MCP servers for agent debugging, and optimizing the agent's product search queries.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<section class="day-hero">
+  <span class="eyebrow">Day 3 · Memory Lane &amp; the MCP Bridge 🔌</span>
+  <h1>DynamoDB memory, MCP servers &amp; query tuning</h1>
+  <p>An agent without memory asks the same questions forever, and an agent you can't inspect is hard to fix.
+     Today you give Zest durable memory in DynamoDB, connect MCP servers so you (and your AI assistant) can see inside both databases, and make product search fast.</p>
+  <div class="day-meta">
+    <span class="chip">🧪 7 labs</span><span class="chip">⏱ ~7 hours</span><span class="chip">🎯 Objectives 3, 5, 6, 7</span><span class="chip">⚡ DynamoDB · 🔌 MCP · 🏎️ EXPLAIN</span>
+  </div>
+  <div class="day-progress" data-day-progress="3"><div class="meter-label"><span>Today's progress</span><span class="meter-count">0/7 labs</span></div><div class="meter"><span></span></div></div>
+</section>
+
+<div class="page-grid">
+  <aside class="toc" id="toc"></aside>
+  <main>
+
+<div class="callout tip"><span class="callout-title">Morning warm-up</span>
+<pre><code class="language-bash">alias labctl="python3 $(pwd)/labctl/labctl.py"   # from the repo root
+eval "$(labctl env)"
+labctl status          # everything should be ✔ after Day 2</code></pre></div>
+
+<h2 id="schedule">🗓️ Schedule</h2>
+<ol class="timeline">
+  <li><span class="time">09:00</span><span class="what">Warm-up &amp; Day 2 recap</span></li>
+  <li><span class="time">09:15</span><span class="what">Module 1: DynamoDB fundamentals</span></li>
+  <li class="lab"><span class="time">10:00</span><span class="what"><a href="#lab-3-1">Lab 3.1 Design Agent Memory in DynamoDB</a></span></li>
+  <li><span class="time">10:30</span><span class="what">Module 2: Agent memory patterns</span></li>
+  <li class="lab"><span class="time">10:50</span><span class="what"><a href="#lab-3-2">Lab 3.2 Wire Memory into Zest</a> → <a href="#lab-3-3">Lab 3.3 Break-Fix: Amnesia</a></span></li>
+  <li class="break"><span class="time">12:00</span><span class="what">🥗 Lunch</span></li>
+  <li><span class="time">13:00</span><span class="what">Module 3: Model Context Protocol &amp; the AWS MCP servers</span></li>
+  <li class="lab"><span class="time">13:30</span><span class="what"><a href="#lab-3-4">Lab 3.4 Aurora PostgreSQL MCP Server</a> → <a href="#lab-3-5">Lab 3.5 DynamoDB MCP Server</a></span></li>
+  <li><span class="time">14:40</span><span class="what">Module 4: Query optimization for agent tools</span></li>
+  <li class="lab"><span class="time">15:05</span><span class="what"><a href="#lab-3-6">Lab 3.6 Optimize Product Search</a></span></li>
+  <li class="lab"><span class="time">15:45</span><span class="what"><a href="#lab-3-7">Lab 3.7 Break-Fix: Slow &amp; Scrambled</a></span></li>
+  <li><span class="time">16:20</span><span class="what"><a href="#quiz">Quiz</a> &amp; wrap-up</span></li>
+</ol>
+
+<!-- ================================================================ M1 -->
+<h2 id="m1">⚡ Module 1 · DynamoDB fundamentals</h2>
+<div class="concepts">
+  <div class="concept"><h4>Items &amp; keys</h4><p>A table holds items (≤ 400 KB each). The primary key is a <strong>partition key</strong>, optionally plus a <strong>sort key</strong>. You design keys around access patterns.</p></div>
+  <div class="concept"><h4>Query vs Scan</h4><p><strong>Query</strong> reads one partition (PK =, SK conditions). <strong>Scan</strong> reads the whole table and filters afterwards, so you pay for everything it reads.</p></div>
+  <div class="concept"><h4>GSIs</h4><p>An alternate key (e.g. <code>customer_id</code>), eventually consistent, with its own ARN: <code>…/table/T/index/I</code>.</p></div>
+  <div class="concept"><h4>TTL</h4><p>A <strong>Number</strong> attribute holding epoch <strong>seconds</strong>. Expired items are deleted in the background, typically within a few days.</p></div>
+</div>
+<div class="table-wrap"><table>
+  <tr><th>Operation</th><th>What it does</th><th>Zest uses it for</th></tr>
+  <tr><td><code>PutItem</code></td><td>Create/replace one item (optionally conditional)</td><td><code>remember</code>, <code>set_state</code></td></tr>
+  <tr><td><code>GetItem</code></td><td>Read one item by full key (strong or eventual)</td><td><code>get_state</code> (ConsistentRead)</td></tr>
+  <tr><td><code>Query</code></td><td>Items in one partition, SK range, ordered</td><td><code>recall</code>: last N turns, newest first</td></tr>
+  <tr><td><code>UpdateItem</code></td><td>Change attributes in place (atomic counters, SET/REMOVE)</td><td>Counters, status flips</td></tr>
+  <tr><td><code>Scan</code></td><td>Read everything</td><td>Never in the request path</td></tr>
+</table></div>
+<div class="callout gotcha"><span class="callout-title">TTL traps</span>
+  <ul>
+    <li>A TTL value in <strong>milliseconds</strong> or as a <strong>String</strong> means the item never expires.</li>
+    <li>Expired-but-not-yet-deleted items still come back from reads. Filter on <code>expires_at &gt; :now</code> if that matters.</li>
+    <li>After you disable TTL, you may have to wait up to an hour before you can re-enable it.</li>
+  </ul></div>
+
+<!-- =============================================================== LAB 3.1 -->
+<section class="lab" id="lab-3-1" data-lab="3.1">
+  <header class="lab-head"><span class="lab-badge">LAB 3.1</span><h3>Design Agent Memory in DynamoDB</h3>
+    <div class="meta"><span class="chip">⏱ 30 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Read the memory table's design, write a conversation by hand, and feel the difference between Query and Scan.</p>
+    <ol class="steps">
+      <li>Inspect keys, GSI and TTL:
+<pre><code class="language-bash">aws dynamodb describe-table --table-name "$MEMORY_TABLE" \
+  --query 'Table.{keys:KeySchema,gsi:GlobalSecondaryIndexes[].{name:IndexName,keys:KeySchema},mode:BillingModeSummary.BillingMode}'
+aws dynamodb describe-time-to-live --table-name "$MEMORY_TABLE"</code></pre></li>
+      <li>Write a 2-turn conversation and a state item that expire in one hour:
+<pre><code class="language-bash">EXP=$(( $(date +%s) + 3600 ))
+put() { aws dynamodb put-item --table-name "$MEMORY_TABLE" --item "$1"; }
+put '{"session_id":{"S":"sess-lab31"},"sk":{"S":"MSG#2026-11-25T09:00:00.000Z#000001"},"role":{"S":"user"},"content":{"S":"Hi, my kettle arrived dented"},"customer_id":{"S":"C00012"},"expires_at":{"N":"'$EXP'"}}'
+put '{"session_id":{"S":"sess-lab31"},"sk":{"S":"MSG#2026-11-25T09:00:04.000Z#000002"},"role":{"S":"assistant"},"content":{"S":"Sorry! Sending a replacement."},"customer_id":{"S":"C00012"},"expires_at":{"N":"'$EXP'"}}'
+put '{"session_id":{"S":"sess-lab31"},"sk":{"S":"STATE"},"status":{"S":"replacement_sent"},"customer_id":{"S":"C00012"},"expires_at":{"N":"'$EXP'"}}'</code></pre></li>
+      <li>Recall the newest message only (that's what <code>recall</code> does):
+<pre><code class="language-bash">aws dynamodb query --table-name "$MEMORY_TABLE" \
+  --key-condition-expression "session_id = :s AND begins_with(sk, :p)" \
+  --expression-attribute-values '{":s":{"S":"sess-lab31"},":p":{"S":"MSG#"}}' \
+  --no-scan-index-forward --limit 1 --query 'Items[].content.S'</code></pre></li>
+      <li>Find everything for a customer through the GSI:
+<pre><code class="language-bash">aws dynamodb query --table-name "$MEMORY_TABLE" --index-name customer-index \
+  --key-condition-expression "customer_id = :c" --expression-attribute-values '{":c":{"S":"C00012"}}' \
+  --query 'Items[].[session_id.S, sk.S]' --output table</code></pre></li>
+      <li>Query vs Scan: compare <code>Count</code>, <code>ScannedCount</code> and consumed capacity:
+<pre><code class="language-bash">aws dynamodb scan --table-name "$MEMORY_TABLE" --filter-expression "customer_id = :c" \
+  --expression-attribute-values '{":c":{"S":"C00012"}}' --return-consumed-capacity TOTAL \
+  --query '{count:Count,scanned:ScannedCount,rcu:ConsumedCapacity.CapacityUnits}'</code></pre></li>
+      <li>Idempotency: write turn #1 again with a condition. What happens?
+<pre><code class="language-bash">aws dynamodb put-item --table-name "$MEMORY_TABLE" --condition-expression "attribute_not_exists(sk)" \
+  --item '{"session_id":{"S":"sess-lab31"},"sk":{"S":"MSG#2026-11-25T09:00:00.000Z#000001"},"role":{"S":"user"},"content":{"S":"dupe"}}'</code></pre></li>
+    </ol>
+    <details class="solution"><summary>What to notice</summary><div class="details-body">
+      The Scan reads every item in the table (ScannedCount &gt; Count, and the gap grows with the table) and you pay for all of them. The Query touches only one partition. Step 6 fails with <code>ConditionalCheckFailedException</code>, which is how you stop duplicate writes when a Lambda retries.</div></details>
+    <div class="checkpoint">You can describe the table's key design in one sentence: "one partition per session; sort key orders turns by time; GSI by customer; TTL cleans up."</div>
+  </div>
+</section>
+
+<!-- ================================================================ M2 -->
+<h2 id="m2">🧠 Module 2 · Agent memory patterns</h2>
+<div class="table-wrap"><table>
+  <tr><th>Memory type</th><th>Example</th><th>Store</th><th>Zest's key</th></tr>
+  <tr><td>Short-term (conversation)</td><td>The last 10 turns</td><td>DynamoDB</td><td><code>session_id</code> + <code>MSG#&lt;iso-ts&gt;#&lt;rand&gt;</code></td></tr>
+  <tr><td>Working state</td><td>status, open issue, ticket ID</td><td>DynamoDB</td><td><code>session_id</code> + <code>STATE</code></td></tr>
+  <tr><td>Long-term / profile</td><td>segment, preferences, lifetime value</td><td>Aurora (or DynamoDB <code>USER#</code>)</td><td><code>customers</code> table</td></tr>
+  <tr><td>Semantic</td><td>"have we seen this problem before?"</td><td>pgvector</td><td><code>support_notes.embedding</code></td></tr>
+  <tr><td>Knowledge</td><td>policies, product guides</td><td>Bedrock KB → Aurora</td><td><code>bedrock_kb</code></td></tr>
+</table></div>
+<ul>
+  <li><strong>Why DynamoDB for conversation memory?</strong> Single-digit-millisecond reads and writes at any scale, one partition per session (traffic spreads out), TTL for free cleanup, and simple IAM scoping.</li>
+  <li><strong>Sort keys that sort:</strong> ISO-8601 timestamps sort lexically in time order, so <code>ScanIndexForward=false</code> + <code>Limit</code> gives you "last N turns".</li>
+  <li><strong>Bound the context:</strong> load a window, not the whole history; summarize older turns into a <code>SUMMARY#</code> item.</li>
+  <li><strong>Managed option:</strong> Amazon Bedrock AgentCore Memory gives you a managed short/long-term memory service. Know it exists, but the exam's focus is DynamoDB.</li>
+</ul>
+
+<!-- =============================================================== LAB 3.2 -->
+<section class="lab" id="lab-3-2" data-lab="3.2">
+  <header class="lab-head"><span class="lab-badge">LAB 3.2</span><h3>Wire Memory into Zest</h3>
+    <div class="meta"><span class="chip">⏱ 30 min</span><span class="chip">🍊🍊 Medium</span><span class="chip">🧠 Claude</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Use Zest's memory tools directly, then talk to the full agent (Claude in Amazon Bedrock) across two turns that depend on memory.</p>
+    <ol class="steps">
+      <li>Memory tools by hand:
+<pre><code class="language-bash">labctl invoke remember '{"session_id":"sess-demo-1","role":"user","content":"I am asking about customer C00042"}'
+labctl invoke recall '{"session_id":"sess-demo-1"}'
+labctl invoke set_state '{"session_id":"sess-vip-007","customer_id":"C00042","state":{"status":"waiting_on_refund","refund_amount":"129.99","promised_by":"2026-11-28"}}'
+labctl invoke get_state '{"session_id":"sess-vip-007"}'</code></pre></li>
+      <li>Talk to the agent. The second question only makes sense if Zest remembers the first:
+<pre><code class="language-bash">labctl invoke ask '{"session_id":"sess-demo-2","customer_id":"C00042","question":"What did this customer order recently, and is any of it still under warranty?"}'
+labctl invoke ask '{"session_id":"sess-demo-2","question":"Which of those products has the best rating?"}'</code></pre></li>
+      <li>Look at <code>tool_calls</code> in the output. Which data sources did Claude use? Then see the turns it stored:
+<pre><code class="language-bash">labctl invoke recall '{"session_id":"sess-demo-2"}'</code></pre></li>
+      <li>In Logs Insights, count tool usage across all <code>ask</code> calls:
+<pre><code class="language-sql">filter event = "tool_call" | stats count(*) as calls, avg(ms) as avg_ms by tool, ok</code></pre></li>
+      <li>Read <code>_history_messages()</code> in <code>agent.py</code>. Why does it merge consecutive same-role turns and drop a leading assistant turn?</li>
+    </ol>
+    <div class="callout info">No Claude model access? Skip step 2. Everything else, including the exam objectives, works without it. The Claude call uses the Anthropic SDK's <code>AnthropicBedrockMantle</code> client, authenticated by the Lambda role (<code>bedrock-mantle:CreateInference</code>).</div>
+    <details class="solution"><summary>Why the history cleanup?</summary><div class="details-body">The Messages API expects a conversation that starts with a <code>user</code> turn and alternates roles. Memory loaded with a <code>Limit</code> can start mid-conversation, or contain two user turns in a row if an earlier call failed before answering.</div></details>
+    <div class="checkpoint">The second <code>ask</code> correctly refers to products from the first answer.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 3.3 -->
+<section class="lab" id="lab-3-3" data-lab="3.3">
+  <header class="lab-head"><span class="lab-badge">BREAK-FIX 3.3</span><h3>Break-Fix: Amnesia</h3>
+    <div class="meta"><span class="chip">⏱ 20 min</span><span class="chip">🍊🍊 Medium</span><span class="chip">💥 2 faults</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Zest forgets everything between turns. Restore its memory with the least-privilege fix.</p>
+    <ol class="steps">
+      <li><pre><code class="language-bash">labctl break memory-iam
+labctl break memory-table</code></pre></li>
+      <li>Probe with <code>labctl status</code> and <code>labctl invoke remember '{"session_id":"t","content":"hi"}'</code>. Both faults surface as <code>AccessDeniedException</code>, so read the <em>resource</em> in each message: one names a table that isn't yours, the other names the real table.</li>
+      <li>Fix both, then: <code>labctl check memory-iam &amp;&amp; labctl check memory-table</code></li>
+    </ol>
+    <details class="hint"><summary>Hint</summary><div class="details-body">IAM is checked before DynamoDB looks for the table. When the policy is scoped to one table ARN, a <em>wrong table name</em> also comes back as AccessDenied, not ResourceNotFound. Compare the ARN in the error with <code>$MEMORY_TABLE_ARN</code>.</div></details>
+    <details class="solution"><summary>Solution</summary><div class="details-body">
+      <p><code>MEMORY_TABLE</code> had a <code>-v2</code> suffix → set it back to <code>$MEMORY_TABLE</code>. The <code>AgentMemory</code> statement was cut to <code>dynamodb:GetItem</code> only → restore <code>PutItem</code>, <code>Query</code>, <code>UpdateItem</code>, <code>DeleteItem</code>, <code>BatchWriteItem</code> on the table <em>and</em> <code>/index/*</code>.</p>
+      <p>Don't "fix" it with <code>dynamodb:*</code> on <code>*</code>. That passes the check, but it's the wrong answer in a real security review.</p></div></details>
+    <div class="checkpoint">Both checks 🏆 and <code>recall</code> returns turns again.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M3 -->
+<h2 id="m3">🔌 Module 3 · Model Context Protocol &amp; the AWS MCP servers</h2>
+<p><strong>MCP</strong> is an open protocol that lets AI applications use external tools and data through small <em>servers</em>.
+A <strong>host</strong> (Kiro, VS Code, Claude Code, Amazon Q Developer…) runs an MCP <strong>client</strong> per server. Each server exposes <strong>tools</strong> (functions), <strong>resources</strong> (data) and <strong>prompts</strong>.</p>
+<figure class="diagram">
+  <svg viewBox="0 0 900 200" role="img" aria-label="Your IDE host launches two MCP servers over stdio with uvx. The Postgres MCP server calls Aurora through the Data API using a secret; the DynamoDB MCP server calls DynamoDB. Both use your AWS profile credentials.">
+    <rect class="box purple" x="10" y="50" width="200" height="100" rx="14"/><text class="title" x="110" y="85" text-anchor="middle">🧑‍💻 Your IDE / assistant</text><text class="label" x="110" y="108" text-anchor="middle">MCP host + clients</text><text class="label" x="110" y="128" text-anchor="middle">mcp.json</text>
+    <path class="wire" d="M210 80 H330"/><path class="wire" d="M210 125 H330"/>
+    <text class="label" x="270" y="72" text-anchor="middle">stdio</text><text class="label" x="270" y="145" text-anchor="middle">stdio</text>
+    <rect class="box hot" x="330" y="20" width="250" height="70" rx="14"/><text class="title" x="455" y="50" text-anchor="middle">awslabs.postgres-mcp-server</text><text class="label" x="455" y="72" text-anchor="middle">uvx · --resource_arn (cluster) · --readonly</text>
+    <rect class="box green" x="330" y="110" width="250" height="70" rx="14"/><text class="title" x="455" y="140" text-anchor="middle">awslabs.dynamodb-mcp-server</text><text class="label" x="455" y="162" text-anchor="middle">uvx · AWS_REGION · read-only</text>
+    <path class="wire" d="M580 55 H690"/><path class="wire" d="M580 145 H690"/>
+    <text class="label" x="635" y="47" text-anchor="middle">Data API</text><text class="label" x="635" y="137" text-anchor="middle">DynamoDB API</text>
+    <rect class="box blue" x="690" y="20" width="200" height="70" rx="14"/><text class="title" x="790" y="60" text-anchor="middle">🐘 Aurora</text>
+    <rect class="box green" x="690" y="110" width="200" height="70" rx="14"/><text class="title" x="790" y="150" text-anchor="middle">⚡ DynamoDB</text>
+  </svg>
+  <figcaption>Local servers run as child processes of your IDE (stdio transport) and use <em>your</em> AWS credentials through <code>AWS_PROFILE</code>.</figcaption>
+</figure>
+
+<h3>The two servers you must configure</h3>
+<pre data-label="mcp.json (Kiro / Claude Code / Amazon Q style)"><code class="language-json">{
+  "mcpServers": {
+    "awslabs.postgres-mcp-server": {
+      "command": "uvx",
+      "args": [
+        "awslabs.postgres-mcp-server@latest",
+        "--resource_arn", "arn:aws:rds:us-east-1:111122223333:cluster:tangerine-student1-aurora",
+        "--secret_arn",   "arn:aws:secretsmanager:us-east-1:111122223333:secret:tangerine-student1/aurora/admin-abc123-XyZ9Q1",
+        "--database",     "agentdb",
+        "--region",       "us-east-1",
+        "--readonly",     "True"
+      ],
+      "env": { "AWS_PROFILE": "default", "AWS_REGION": "us-east-1", "FASTMCP_LOG_LEVEL": "ERROR" }
+    },
+    "awslabs.dynamodb-mcp-server": {
+      "command": "uvx",
+      "args": ["awslabs.dynamodb-mcp-server@latest"],
+      "env": { "DDB-MCP-READONLY": "true", "AWS_PROFILE": "default", "AWS_REGION": "us-east-1", "FASTMCP_LOG_LEVEL": "ERROR" }
+    }
+  }
+}</code></pre>
+<div class="table-wrap"><table>
+  <tr><th>Client</th><th>Config file</th><th>Top-level key</th></tr>
+  <tr><td>Kiro</td><td><code>.kiro/settings/mcp.json</code> (workspace) or <code>~/.kiro/settings/mcp.json</code></td><td><code>mcpServers</code></td></tr>
+  <tr><td>Claude Code</td><td><code>.mcp.json</code> in the project, or <code>claude mcp add …</code></td><td><code>mcpServers</code></td></tr>
+  <tr><td>Amazon Q Developer CLI</td><td><code>~/.aws/amazonq/mcp.json</code></td><td><code>mcpServers</code></td></tr>
+  <tr><td>VS Code</td><td><code>.vscode/mcp.json</code></td><td><code>servers</code> (each with <code>"type": "stdio"</code>)</td></tr>
+  <tr><td>Cursor</td><td><code>.cursor/mcp.json</code></td><td><code>mcpServers</code></td></tr>
+</table></div>
+<div class="callout gotcha"><span class="callout-title">MCP debugging checklist</span>
+  <ol>
+    <li>Valid JSON (no trailing commas!) and the right top-level key for your client.</li>
+    <li><code>uvx</code> is on the PATH <em>the IDE sees</em>. GUI apps often don't inherit your shell PATH, so use the full path from <code>which uvx</code>.</li>
+    <li><code>--resource_arn</code> is the <strong>cluster</strong> ARN; <code>--database</code> is <code>agentdb</code>, not <code>postgres</code>.</li>
+    <li>Region matches where the resources live, for <em>both</em> servers.</li>
+    <li>The profile's identity can call <code>rds-data:ExecuteStatement</code>, read the secret, and read DynamoDB.</li>
+    <li>The Data API is enabled. The Postgres MCP server uses it too.</li>
+    <li>Flag names change between versions: run <code>uvx awslabs.postgres-mcp-server@latest --help</code> to see yours.</li>
+  </ol></div>
+
+<!-- =============================================================== LAB 3.4 -->
+<section class="lab" id="lab-3-4" data-lab="3.4">
+  <header class="lab-head"><span class="lab-badge">LAB 3.4</span><h3>Aurora PostgreSQL MCP Server</h3>
+    <div class="meta"><span class="chip">⏱ 40 min</span><span class="chip">🍊🍊🍊 Exam-critical</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Configure the Aurora MCP server, prove it works with MCP Inspector, then use it to debug Zest's database through an AI assistant.</p>
+    <ol class="steps">
+      <li>Check prerequisites and read the server's real flags:
+<pre><code class="language-bash">uvx --version &amp;&amp; which uvx
+uvx awslabs.postgres-mcp-server@latest --help</code></pre></li>
+      <li>Generate a config from your environment (no copy-paste ARN typos):
+<pre><code class="language-bash">mkdir -p labs/mcp
+cat &gt; labs/mcp/my-mcp.json &lt;&lt;EOF
+{
+  "mcpServers": {
+    "awslabs.postgres-mcp-server": {
+      "command": "uvx",
+      "args": ["awslabs.postgres-mcp-server@latest",
+               "--resource_arn", "$CLUSTER_ARN", "--secret_arn", "$ADMIN_SECRET_ARN",
+               "--database", "$DB_NAME", "--region", "$REGION", "--readonly", "True"],
+      "env": {"AWS_PROFILE": "${AWS_PROFILE:-default}", "AWS_REGION": "$REGION", "FASTMCP_LOG_LEVEL": "ERROR"}
+    }
+  }
+}
+EOF
+python3 -m json.tool labs/mcp/my-mcp.json &gt;/dev/null &amp;&amp; echo "valid JSON ✔"</code></pre></li>
+      <li>Smoke-test it outside any IDE with <strong>MCP Inspector</strong> (needs Node.js). In the browser UI: <em>Connect → Tools → List tools</em>, then run the schema tool on <code>products</code> and a query tool with <code>SELECT count(*) FROM orders</code>.
+<pre><code class="language-bash">npx @modelcontextprotocol/inspector -- uvx awslabs.postgres-mcp-server@latest \
+  --resource_arn "$CLUSTER_ARN" --secret_arn "$ADMIN_SECRET_ARN" \
+  --database "$DB_NAME" --region "$REGION" --readonly True</code></pre></li>
+      <li>Install the config in your client (see the table above), restart or reload it, and confirm the server shows as connected.</li>
+      <li>Debug with your assistant. Try these prompts:
+        <ul>
+          <li><em>"Using the postgres MCP server, list the tables in agentdb and describe the products table, including its indexes."</em></li>
+          <li><em>"Which product category has the most products, and what's its average rating?"</em></li>
+          <li><em>"Is there an index that would help <code>WHERE name ILIKE '%drone%'</code>? Explain the plan for that query."</em></li>
+          <li><em>"Check the bedrock_integration.bedrock_kb table: vector dimension, indexes, row count."</em></li>
+        </ul></li>
+      <li>Safety check: ask it to <em>"delete all rows from orders"</em>. What stops it?</li>
+      <li>Grade the Postgres part of your config: <code>labctl check mcp-pg --file labs/mcp/my-mcp.json</code></li>
+    </ol>
+    <details class="hint"><summary>Server shows "failed" / red in the IDE?</summary><div class="details-body">Open the MCP logs or output panel of your client. The usual causes are <code>spawn uvx ENOENT</code> (PATH: use the absolute uvx path), <code>ExpiredToken</code> (refresh your SSO login), or a Data API error (check the cluster ARN and that the Data API is on).</div></details>
+    <details class="solution"><summary>Spoiler: a known-good config</summary><div class="details-body"><code>labctl mcp-json</code> prints one (<code>--client vscode</code> for VS Code's format).</div></details>
+    <div class="checkpoint">Your assistant answered the category question by running SQL through MCP, refused the DELETE because of <code>--readonly True</code>, and <code>check mcp-pg</code> is 🏆.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 3.5 -->
+<section class="lab" id="lab-3-5" data-lab="3.5">
+  <header class="lab-head"><span class="lab-badge">LAB 3.5</span><h3>DynamoDB MCP Server</h3>
+    <div class="meta"><span class="chip">⏱ 25 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Add the DynamoDB MCP server and use it to inspect the agent's live session state.</p>
+    <ol class="steps">
+      <li>Add this second server to <code>labs/mcp/my-mcp.json</code> and to your client: put a comma after the postgres server's closing <code>}</code>, then paste it inside <code>mcpServers</code>:
+<pre><code class="language-json">"awslabs.dynamodb-mcp-server": {
+  "command": "uvx",
+  "args": ["awslabs.dynamodb-mcp-server@latest"],
+  "env": {"DDB-MCP-READONLY": "true", "AWS_PROFILE": "default", "AWS_REGION": "us-east-1", "FASTMCP_LOG_LEVEL": "ERROR"}
+}</code></pre>
+        (Use your own region and profile.)</li>
+      <li>List its tools (Inspector or your client). Tool sets differ between versions: some expose table/item operations, newer ones focus on data modeling plus a command tool. Note what <em>yours</em> offers.</li>
+      <li>Ask your assistant:
+        <ul>
+          <li><em>"Using the DynamoDB MCP server, describe the table &lt;paste the output of <code>echo $MEMORY_TABLE</code>&gt;: keys, GSIs, TTL."</em></li>
+          <li><em>"Get the STATE item for session sess-vip-007. What is the agent waiting on, and by when?"</em></li>
+          <li><em>"Using the customer-index GSI, list every session for customer C00042."</em></li>
+        </ul></li>
+      <li>Grade the full config: <code>labctl check mcp-config --file labs/mcp/my-mcp.json</code></li>
+    </ol>
+    <div class="callout info">If your server version has no item-read tools, add the AWS API MCP server (<code>awslabs.aws-api-mcp-server</code>) and ask it to run <code>dynamodb get-item</code>, or answer with the AWS CLI. The exam objective is configuring the server for state inspection; read its guidance for the version it ships.</div>
+    <div class="checkpoint">You read <code>waiting_on_refund</code> / <code>2026-11-28</code> from the STATE item through MCP, and both config checks are ✔.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M4 -->
+<h2 id="m4">🏎️ Module 4 · Query optimization for agent tools</h2>
+<p>Agent tools run the <em>same few queries</em> thousands of times, with a model waiting on each one. A 300 ms query called 4 times per answer is over a second of waiting. That's why the exam has an objective on optimizing the agent's queries.</p>
+<div class="concepts">
+  <div class="concept"><h4>EXPLAIN</h4><p>Shows the plan. <code>EXPLAIN (ANALYZE, BUFFERS)</code> runs it and shows real timings and I/O (careful with writes!).</p></div>
+  <div class="concept"><h4>Scan types</h4><p>Seq Scan (every row) · Index Scan · Index Only Scan · Bitmap Index + Heap Scan (many matches).</p></div>
+  <div class="concept"><h4>B-tree limits</h4><p>Great for <code>=</code>, ranges, sorting and <code>LIKE 'abc%'</code>. Useless for a <strong>leading wildcard</strong> <code>ILIKE '%abc%'</code>.</p></div>
+  <div class="concept"><h4>pg_trgm + GIN</h4><p>Splits text into 3-letter grams. <code>USING gin (name gin_trgm_ops)</code> makes <code>ILIKE '%drone 42%'</code> index-assisted.</p></div>
+</div>
+<h3>Composite index column order</h3>
+<p>For <code>WHERE category = :c ORDER BY rating DESC LIMIT 10</code>, put <strong>equality columns first, then the sort columns</strong>: <code>(category, rating DESC, product_id)</code>.
+Postgres jumps straight to the category, reads rows already in rating order, and stops after 10 matches: no sort, no full scan.</p>
+<div class="table-wrap"><table>
+  <tr><th>Tool</th><th>Use it to</th></tr>
+  <tr><td><code>EXPLAIN (ANALYZE, BUFFERS)</code></td><td>See the plan and the real cost of one query</td></tr>
+  <tr><td><code>pg_stat_statements</code></td><td>Find the queries with the most total time across all calls</td></tr>
+  <tr><td><code>ANALYZE table</code></td><td>Refresh planner statistics after bulk loads</td></tr>
+  <tr><td>Performance Insights / Database Insights</td><td>Top SQL and wait events over time</td></tr>
+  <tr><td>Zest's <code>sql</code> log lines + Lambda <code>Duration</code></td><td>End-to-end latency as the agent sees it</td></tr>
+</table></div>
+
+<!-- =============================================================== LAB 3.6 -->
+<section class="lab" id="lab-3-6" data-lab="3.6">
+  <header class="lab-head"><span class="lab-badge">LAB 3.6</span><h3>Optimize Product Search</h3>
+    <div class="meta"><span class="chip">⏱ 40 min</span><span class="chip">🍊🍊🍊 Exam-critical</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Measure Zest's product search, explain why it's slow, add the right two indexes, and prove the improvement.</p>
+    <ol class="steps">
+      <li><strong>Baseline</strong> latency, end to end, through the agent:
+<pre><code class="language-bash">for q in "drone 42" "speaker" "kettle 7" "tent" "smart watch"; do
+  labctl invoke search_products "{\"query\":\"$q\"}" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r["duration_ms"], "ms", len(r["result"]), "rows")'
+done</code></pre></li>
+      <li><strong>Explain</strong> both query shapes the tool generates:
+<pre><code class="language-bash">labctl sql "EXPLAIN ANALYZE SELECT product_id, name, price, rating FROM products WHERE name ILIKE '%drone 42%' ORDER BY rating DESC, product_id LIMIT 10"
+labctl sql "EXPLAIN ANALYZE SELECT product_id, name, price, rating FROM products WHERE name ILIKE '%speaker%' AND category = 'audio' ORDER BY rating DESC, product_id LIMIT 10"</code></pre>
+        Find <code>Seq Scan on products</code> and <code>Rows Removed by Filter</code>.</li>
+      <li>Before you look at the solution: which index would help each query, and why wouldn't a plain b-tree on <code>name</code> help?</li>
+      <li>Create your indexes (the Query Editor or <code>labctl sql</code>). Re-run step 2 after each one and watch the plan change.</li>
+      <li>Re-run step 1 and compare. Then in Logs Insights:
+<pre><code class="language-sql">filter event = "sql" and statement like /FROM products/
+| stats count(*) as n, avg(ms) as avg_ms, pct(ms, 90) as p90_ms by bin(5m)</code></pre></li>
+      <li>Bonus: find the heaviest queries overall:
+<pre><code class="language-bash">labctl sql "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"
+labctl sql "SELECT calls, round(mean_exec_time::numeric, 2) AS mean_ms, left(query, 70) AS query FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 5"</code></pre></li>
+      <li>Grade it: <code>labctl check slow-search</code></li>
+    </ol>
+    <details class="solution"><summary>Solution (also in <code>sql/03_indexes_solution.sql</code>)</summary><div class="details-body">
+<pre><code class="language-sql">CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_products_name_trgm       ON products USING gin (name gin_trgm_ops);       -- leading-wildcard ILIKE
+CREATE INDEX idx_products_category_rating ON products (category, rating DESC, product_id); -- filter + sort + LIMIT
+ANALYZE products;</code></pre>
+      <p>Expect roughly 35 ms → under 1 ms per query on a laptop-sized Postgres. A 0.5-ACU Aurora starts slower, so your gain will be bigger.</p></div></details>
+    <div class="checkpoint">Both plans show index use (Bitmap Index Scan on <code>idx_products_name_trgm</code> / Index Scan on <code>idx_products_category_rating</code>) and <code>labctl check slow-search</code> is 🏆.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 3.7 -->
+<section class="lab" id="lab-3-7" data-lab="3.7">
+  <header class="lab-head"><span class="lab-badge">BREAK-FIX 3.7</span><h3>Break-Fix: Slow &amp; Scrambled</h3>
+    <div class="meta"><span class="chip">⏱ 25 min</span><span class="chip">🍊🍊🍊 Hard</span><span class="chip">💥 2 faults</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 A "cleanup script" dropped extensions and indexes, and a teammate committed a broken MCP config. Fix both.</p>
+    <ol class="steps">
+      <li><pre><code class="language-bash">labctl break slow-search
+labctl break mcp-config          # writes labs/mcp/broken-mcp.json</code></pre></li>
+      <li>Restore search performance. Careful: something you rely on is gone, and recreating the index alone won't work.</li>
+      <li>Fix <code>labs/mcp/broken-mcp.json</code> <em>in place</em>. There are several wrong values across the two servers. Compare each one with <code>labctl env</code>.</li>
+      <li><code>labctl check slow-search &amp;&amp; labctl check mcp-config</code></li>
+    </ol>
+    <details class="hint"><summary>Hint</summary><div class="details-body"><code>operator class "gin_trgm_ops" does not exist</code> means the extension is missing. For the MCP file, compare each value with <code>labctl env</code>.</div></details>
+    <details class="solution"><summary>Solution</summary><div class="details-body">
+      <p><code>CREATE EXTENSION pg_trgm;</code>, then both indexes from Lab 3.6, then <code>ANALYZE products;</code>.</p>
+      <p>MCP file: <code>--resource_arn</code> was the writer <em>instance</em> ARN (use the cluster ARN), <code>--database</code> was <code>postgres</code> (use <code>agentdb</code>), and <code>--region</code> plus both <code>AWS_REGION</code> values pointed at the wrong region.</p></div></details>
+    <div class="checkpoint">Both checks 🏆.</div>
+  </div>
+</section>
+
+<!-- ============================================================== QUIZ -->
+<h2 id="quiz">❓ Day 3 quiz</h2>
+<div class="quiz">
+  <div class="q" data-q="d3q1" data-answer="1">
+    <p class="q-text">Best way to load "the last 10 turns of session S, newest first"?</p>
+    <div class="options"><button class="opt">Scan with <code>FilterExpression session_id = S</code></button><button class="opt">Query <code>session_id = S AND begins_with(sk,'MSG#')</code>, <code>ScanIndexForward=false</code>, <code>Limit=10</code></button><button class="opt">GetItem ×10</button><button class="opt">Query the GSI with no key condition</button></div>
+    <p class="explain">One partition, sort key in time order, read backwards, stop at 10.</p>
+  </div>
+  <div class="q" data-q="d3q2" data-answer="3">
+    <p class="q-text">Memory items never expire, even though TTL is enabled on <code>expires_at</code>. Most likely cause?</p>
+    <div class="options"><button class="opt">TTL only works on GSIs</button><button class="opt">The table is on-demand</button><button class="opt">PITR blocks TTL</button><button class="opt">The value is a String or in milliseconds instead of a Number of epoch seconds</button></div>
+    <p class="explain">TTL needs a Number of epoch <em>seconds</em>. Milliseconds look like a date thousands of years away.</p>
+  </div>
+  <div class="q" data-q="d3q3" data-answer="0">
+    <p class="q-text">Query on <code>customer-index</code> fails with AccessDenied, but the policy allows <code>dynamodb:Query</code> on the table ARN. Fix?</p>
+    <div class="options"><button class="opt">Also allow <code>…/table/NAME/index/*</code></button><button class="opt">Use Scan instead</button><button class="opt">Enable streams</button><button class="opt">Switch to provisioned capacity</button></div>
+    <p class="explain">Indexes are separate IAM resources.</p>
+  </div>
+  <div class="q" data-q="d3q4" data-answer="2">
+    <p class="q-text">In the Aurora PostgreSQL MCP server config, <code>--resource_arn</code> should be…</p>
+    <div class="options"><button class="opt">The writer instance ARN</button><button class="opt">The secret ARN</button><button class="opt">The Aurora cluster ARN</button><button class="opt">The Lambda function ARN</button></div>
+    <p class="explain">It talks to the Data API, which works on the cluster.</p>
+  </div>
+  <div class="q" data-q="d3q5" data-answer="1">
+    <p class="q-text">Which index lets <code>WHERE name ILIKE '%drone 42%'</code> avoid a full scan?</p>
+    <div class="options"><button class="opt"><code>CREATE INDEX ON products (name)</code></button><button class="opt"><code>CREATE INDEX ON products USING gin (name gin_trgm_ops)</code> with pg_trgm</button><button class="opt"><code>CREATE INDEX ON products USING hnsw (name)</code></button><button class="opt">A hash index on name</button></div>
+    <p class="explain">Trigram GIN indexes support substring and ILIKE matching. B-trees can't serve leading wildcards.</p>
+  </div>
+  <div class="q" data-q="d3q6" data-answer="3">
+    <p class="q-text">Best index for <code>WHERE category = $1 ORDER BY rating DESC LIMIT 10</code>?</p>
+    <div class="options"><button class="opt"><code>(rating DESC)</code></button><button class="opt"><code>(rating DESC, category)</code></button><button class="opt">Separate indexes on category and rating</button><button class="opt"><code>(category, rating DESC)</code></button></div>
+    <p class="explain">Equality first, then the sort column. The scan stops after 10 rows with no sort step.</p>
+  </div>
+  <div class="q" data-q="d3q7" data-answer="0">
+    <p class="q-text">An MCP server launched by your IDE with <code>uvx</code> talks to the IDE over…</p>
+    <div class="options"><button class="opt">stdio</button><button class="opt">The RDS Data API</button><button class="opt">SSH</button><button class="opt">An SQS queue</button></div>
+    <p class="explain">Local servers are child processes speaking JSON-RPC over stdin/stdout. Remote servers use Streamable HTTP.</p>
+  </div>
+</div>
+
+<div class="mission-nav">
+  <a href="day2.html"><small>← Previous mission</small><strong>Day 2 · The Vector Vault</strong></a>
+  <a class="next" href="day4.html"><small>Final mission →</small><strong>Day 4 · Operation Tangerine ⚡</strong></a>
+</div>
+
+  </main>
+</div>
+
+<div id="site-footer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

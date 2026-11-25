@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lab Setup Guide</title>
+  <meta name="description" content="Deploy the Operation Tangerine lab environment (Aurora PostgreSQL Serverless v2, DynamoDB, Lambda, S3, IAM, CloudWatch, optional Bedrock Knowledge Base) with Terraform.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<section class="day-hero">
+  <span class="eyebrow">🧰 Prerequisites before Day 1 · Deploy during Lab 1.1</span>
+  <h1>Build the Rescue Base</h1>
+  <p>Install the prerequisites before class. On Day 1, Lab 1.1 walks you through the deploy below: one <code style="background:rgba(255,255,255,.2);border:0;color:#fff">terraform apply</code> builds Zest's whole data layer in your own AWS account in about 15 minutes.</p>
+  <div class="day-meta"><span class="chip">⏱ ~15 min deploy</span><span class="chip">💸 ~$2–4 / day</span><span class="chip">🗺️ us-east-1 default</span></div>
+</section>
+
+<div class="page-grid">
+  <aside class="toc" id="toc"></aside>
+  <main>
+
+<h2 id="prereqs">✅ Prerequisites</h2>
+<div class="table-wrap"><table>
+  <tr><th>Tool</th><th>Why</th><th>Check</th></tr>
+  <tr><td>AWS account (sandbox, <strong>not production</strong>)</td><td>Labs deliberately break IAM, Lambda and database settings.</td><td><code>aws sts get-caller-identity</code></td></tr>
+  <tr><td>AWS CLI v2</td><td>Every lab uses it.</td><td><code>aws --version</code></td></tr>
+  <tr><td>Terraform ≥ 1.6</td><td>Deploys the lab.</td><td><code>terraform version</code></td></tr>
+  <tr><td>Python 3.9+ with <code>pip</code> and <code>boto3</code></td><td><code>labctl</code> runs on it, and Terraform uses pip to build the Anthropic SDK Lambda layer.</td><td><code>python3 -m pip --version</code></td></tr>
+  <tr><td><code>uv</code> / <code>uvx</code></td><td>Runs the AWS Labs MCP servers on Day 3.</td><td><code>uvx --version</code></td></tr>
+  <tr><td>Node.js 18+ (<code>npx</code>)</td><td>Runs MCP Inspector on Day 3.</td><td><code>npx --version</code></td></tr>
+  <tr><td>An MCP client</td><td>Kiro, VS Code, Claude Code, Amazon Q Developer CLI, or MCP Inspector (<code>npx</code>).</td><td>Day 3</td></tr>
+</table></div>
+
+<div class="callout gotcha"><span class="callout-title">Check Bedrock model access first</span>
+  Make sure your account can invoke <strong>Amazon Titan Text Embeddings V2</strong> (<code>amazon.titan-embed-text-v2:0</code>) and the Claude model the agent uses
+  (default <code>anthropic.claude-opus-5-5</code>, fallback <code>anthropic.claude-opus-4-8</code>) in the region you'll deploy to.
+  Depending on your console version that's a <strong>Model access</strong> page, or models are enabled on first use. Either way, Anthropic models may ask for a one-time use-case form.
+  Everything except the agent's <code>ask</code> action works without Claude access.</div>
+
+<h2 id="what">📦 What gets deployed</h2>
+<div class="table-wrap"><table>
+  <tr><th>Resource</th><th>Name pattern</th><th>Notes</th></tr>
+  <tr><td>VPC + 2 private subnets + SG</td><td><code>tangerine-&lt;id&gt;-vpc</code></td><td>Aurora only. No NAT gateway, no internet gateway.</td></tr>
+  <tr><td>Aurora PostgreSQL Serverless v2</td><td><code>tangerine-&lt;id&gt;-aurora</code></td><td>Latest 16.x, Data API <strong>on</strong>, 0.5–4 ACU (Aurora capacity units), slow-query log → CloudWatch.</td></tr>
+  <tr><td>Secrets Manager × 2</td><td><code>…/aurora/admin-*</code>, <code>…/aurora/bedrock-user-*</code></td><td>Admin creds (agent) + least-privilege creds (Knowledge Base).</td></tr>
+  <tr><td>DynamoDB table</td><td><code>tangerine-&lt;id&gt;-agent-memory</code></td><td>PK <code>session_id</code>, SK <code>sk</code>, GSI <code>customer-index</code>, TTL <code>expires_at</code>, point-in-time recovery.</td></tr>
+  <tr><td>S3 bucket + 8 docs</td><td><code>tangerine-&lt;id&gt;-kb-docs-…</code></td><td>Policies and product guides with <code>.metadata.json</code> sidecars.</td></tr>
+  <tr><td>Lambda "Zest"</td><td><code>tangerine-&lt;id&gt;-zest-agent</code></td><td>Python 3.13, 10 actions (SQL tools, vector search, KB retrieval, memory, a Claude agent loop), structured JSON logs.</td></tr>
+  <tr><td>IAM roles × 2</td><td><code>…-zest-agent-role</code>, <code>…-kb-service-role</code></td><td>Least privilege. Statement <code>Sid</code>s are what the drills tamper with.</td></tr>
+  <tr><td>CloudWatch dashboard</td><td><code>tangerine-&lt;id&gt;-mission-control</code></td><td>Lambda, Aurora ACU, DynamoDB and log widgets.</td></tr>
+  <tr><td>Bedrock Knowledge Base <em>(optional)</em></td><td><code>tangerine-&lt;id&gt;-product-kb</code></td><td>Off by default. You build it by hand in Lab 2.6, as on the exam.</td></tr>
+</table></div>
+
+<h2 id="deploy">🚀 Deploy (Lab 1.1)</h2>
+<p>Run everything from the repo root unless a step says otherwise.</p>
+<pre data-label="terminal"><code class="language-bash"># 1. Get the code (use your fork / the repo your instructor shared)
+git clone https://github.com/&lt;you&gt;/operation-tangerine.git
+cd operation-tangerine
+
+# 2. Configure
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+#    edit terraform.tfvars: region, student_id (unique per person in a shared account)
+
+# 3. Deploy (~12-15 min, Aurora is the slow part)
+terraform init
+terraform apply
+
+# 4. Back to the repo root. Install labctl's only dependency and make a handy alias
+cd ..
+python3 -m pip install --user boto3    # "externally-managed-environment"? use a venv:
+                                        #   python3 -m venv .venv &amp;&amp; . .venv/bin/activate &amp;&amp; pip install boto3
+alias labctl="python3 $(pwd)/labctl/labctl.py"     # add to ~/.zshrc or ~/.bashrc to keep it
+eval "$(labctl env)"                                 # exports $CLUSTER_ARN, $LAMBDA_NAME, $MEMORY_TABLE, ...
+
+# 5. Seed the database (5k customers, 200k products, 100k orders)  ← Lab 1.2
+labctl db-setup
+
+# 6. Mission status: every check should be ✔ except knowledge_base (that's Day 2)
+labctl status</code></pre>
+
+<div class="callout tip"><span class="callout-title">While Aurora deploys…</span>
+  Day 1's IAM module is timed to run during the first <code>terraform apply</code>. Start the deploy, then start learning.</div>
+
+<p>Expected <code>labctl status</code> on a fresh deploy:</p>
+<pre><code class="language-text">🍊 Mission status - tangerine-student1 (us-east-1)
+  cluster_id         tangerine-student1-aurora
+  …                  (db_name, memory_table, lambda_name, docs_bucket, knowledge_base_id)
+  cluster status     available   Data API: on
+  Agent health
+  ✔ aurora_connect
+  ✔ aurora_products
+  ✔ memory_write
+  ✔ memory_read
+  ✔ embeddings
+  ✖ knowledge_base   RuntimeError: KB_ID not set     ← you fix this in Lab 2.6</code></pre>
+
+<h2 id="labctl">🕹️ labctl cheat sheet</h2>
+<div class="table-wrap"><table>
+  <tr><th>Command</th><th>What it does</th></tr>
+  <tr><td><code>labctl status</code></td><td>Resources, Data API state, and the agent's own health probe.</td></tr>
+  <tr><td><code>labctl db-setup [schema seed kb kb-rebuild indexes playground]</code></td><td>Runs files in <code>sql/</code> through the Data API. Safe to re-run. <code>kb-rebuild</code> drops and recreates the vector table.</td></tr>
+  <tr><td><code>labctl invoke &lt;action&gt; '{json}'</code></td><td>Calls the Zest Lambda, e.g. <code>labctl invoke search_products '{"query":"drone"}'</code>.</td></tr>
+  <tr><td><code>labctl sql "SELECT …"</code></td><td>One-off SQL via the Data API.</td></tr>
+  <tr><td><code>labctl embed-notes</code></td><td>Embeds 30 support notes with Titan V2 into <code>support_notes</code>.</td></tr>
+  <tr><td><code>labctl kb-sync [--full]</code></td><td>Starts a Knowledge Base ingestion job and waits for it. <code>--full</code> forces every doc to re-ingest.</td></tr>
+  <tr><td><code>labctl drills</code> · <code>break &lt;d&gt;</code> · <code>check &lt;d&gt;</code> · <code>hint &lt;d&gt;</code></td><td>Break-fix drills. <code>check</code> exits non-zero until the fix is right.</td></tr>
+  <tr><td><code>labctl exam start | answer q1 "…" | check</code></td><td>The 140-minute mock exam lab (Day 4).</td></tr>
+  <tr><td><code>labctl mcp-json [--client vscode]</code></td><td>Prints a working MCP config. It's a spoiler for Labs 3.4 and 3.5!</td></tr>
+</table></div>
+
+<h2 id="reset">🔄 The reset button</h2>
+<p>Broke something and can't find it? Run what matches how far you've got. It won't skip ahead and solve later labs for you:</p>
+<pre><code class="language-bash">(cd terraform &amp;&amp; terraform apply)       # always: IAM policies, Lambda env vars, Data API
+labctl db-setup schema seed             # always: tables and seed data
+labctl db-setup kb-rebuild              # after Lab 2.5: recreate the vector table + bedrock_user
+labctl kb-sync --full                   # after Lab 2.6: refill the Knowledge Base
+labctl db-setup indexes                 # after Lab 3.6: the product-search indexes</code></pre>
+<p>Day 4 has its own <a href="day4.html#reset">pre-exam reset</a> that runs all of these.</p>
+<div class="callout info">Drills change things outside Terraform on purpose (that's <em>drift</em>). <code>terraform plan</code> is a fault detector: it lists exactly what was changed. On the real exam you won't have Terraform, so practice finding faults by hand first.</div>
+
+<h2 id="costs">💸 Cost &amp; teardown</h2>
+<div class="table-wrap"><table>
+  <tr><th>Item</th><th>Rough cost (us-east-1)</th></tr>
+  <tr><td>Aurora Serverless v2 at 0.5 ACU idle</td><td>≈ $0.06/hour (≈ $1.50/day), more while you load data</td></tr>
+  <tr><td>Secrets Manager (2 secrets)</td><td>$0.40 per secret-month, prorated</td></tr>
+  <tr><td>DynamoDB on-demand, Lambda, S3</td><td>Pennies at lab volume</td></tr>
+  <tr><td>Bedrock (Titan embeddings, Claude <code>ask</code> calls)</td><td>Cents per day at lab volume</td></tr>
+  <tr><td>CloudWatch dashboard</td><td>First 3 dashboards are free</td></tr>
+</table></div>
+<p class="muted">These are estimates; check the AWS Pricing Calculator for your region. To save money overnight, set <code>aurora_min_acu = 0</code> (auto-pause) and re-apply. The first query after a pause waits about 15 seconds.</p>
+<pre data-label="teardown"><code class="language-bash"># 1. If you created a Knowledge Base in the console, delete it first (Bedrock → Knowledge Bases)
+# 2. Then:
+cd terraform
+terraform destroy</code></pre>
+
+<h2 id="troubleshooting">🩺 Setup troubleshooting</h2>
+<div class="table-wrap"><table>
+  <tr><th>Symptom</th><th>Fix</th></tr>
+  <tr><td><span class="err">build_layer.sh: python3 not found / No matching distribution</span></td><td>Make sure <code>python3 -m pip</code> works and you're online. Or set <code>enable_claude_agent = false</code>: everything except <code>ask</code> still works.</td></tr>
+  <tr><td><span class="err">archive_file: … build/layer: no such file or directory</span></td><td>The layer folder was deleted (new clone, same state). Run <code>terraform apply -replace='terraform_data.anthropic_layer_build[0]'</code>.</td></tr>
+  <tr><td><span class="err">labctl: `terraform output` failed</span></td><td>Run <code>terraform apply</code> first, or <code>terraform output -json lab &gt; lab.json</code> then <code>export LAB_OUTPUTS=$PWD/lab.json</code>.</td></tr>
+  <tr><td><span class="err">DatabaseResumingException</span></td><td>Aurora was auto-paused (min ACU 0). labctl retries automatically; the Lambda may need one retry.</td></tr>
+  <tr><td><span class="err">embeddings: AccessDeniedException … titan-embed-text-v2</span></td><td>Enable model access for Titan Text Embeddings V2 in this region.</td></tr>
+  <tr><td><span class="err">ask: … bedrock-mantle … AccessDenied / model not found</span></td><td>Check Claude model access in Bedrock and that <code>agent_model_id</code> is offered in your region; try <code>anthropic.claude-opus-4-8</code>.</td></tr>
+</table></div>
+
+<div class="mission-nav">
+  <a href="index.html"><small>← Back</small><strong>Mission overview</strong></a>
+  <a class="next" href="day1.html"><small>Next →</small><strong>Day 1 · Launch Pad</strong></a>
+</div>
+
+  </main>
+</div>
+
+<div id="site-footer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

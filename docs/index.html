@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operation Tangerine</title>
+  <meta name="description" content="A 4-day bootcamp to prepare for the AWS Databases for Agentic AI Demonstrated exam lab: AWS fundamentals, Aurora PostgreSQL + pgvector, Bedrock Knowledge Bases, DynamoDB agent memory, MCP servers and break-fix practice.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<header class="hero">
+  <span class="floaty" style="top:12%;left:4%">🍊</span>
+  <span class="floaty" style="top:70%;left:46%;animation-duration:18s">🍃</span>
+  <span class="floaty" style="top:20%;left:58%;animation-duration:22s;font-size:1.4rem">🍊</span>
+  <div class="container hero-grid">
+    <div>
+      <span class="eyebrow">🚨 Incident in progress · 4-day bootcamp</span>
+      <h1>Rescue the <span class="glow">AI agent</span>.<br>Pass the exam lab.</h1>
+      <p class="lede">
+        Citrus &amp; Co.'s customer-intelligence agent <strong>Zest</strong> has gone dark. It can't reach its
+        database, it forgot every conversation, and its vectors are the wrong size. You get
+        <strong>140 minutes</strong> and a live AWS account to bring it back.
+        This bootcamp gets you ready for the
+        <a href="https://skillbuilder.aws/learn/2MHE4K7STM/aws-databases-for-agentic-ai-demonstrated/NYCNC3CU6X" target="_blank" rel="noopener">AWS Databases for Agentic AI Demonstrated</a>
+        exam lab: three days of fundamentals and one day of break-fix practice that mimics the exam.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="day1.html">🚀 Start Day 1</a>
+        <a class="btn btn-ghost" href="setup.html">🧰 Deploy the lab with Terraform</a>
+        <a class="btn btn-ghost" href="day4.html">⚡ Jump to the mock exam</a>
+      </div>
+    </div>
+    <div class="mascot-stage">
+      <div data-mascot></div>
+      <div class="speech">"My memory's gone and my vectors are the wrong size! Help me, Ranger! 🍊"</div>
+    </div>
+  </div>
+</header>
+
+<section class="container">
+  <div class="stats">
+    <div class="stat"><div class="num">140</div><div class="lbl">minute timed exam lab</div></div>
+    <div class="stat"><div class="num">7</div><div class="lbl">exam objectives covered</div></div>
+    <div class="stat"><div class="num">26</div><div class="lbl">hands-on labs (8 break-fix)</div></div>
+    <div class="stat"><div class="num">10</div><div class="lbl">injectable fault drills</div></div>
+    <div class="stat"><div class="num"><span id="total-xp">4,730</span></div><div class="lbl">XP up for grabs</div></div>
+  </div>
+</section>
+
+<section class="section container" id="exam">
+  <h2 class="section-title">🎯 What you're up against</h2>
+  <p class="section-sub">The exam isn't multiple choice. It's a <strong>hands-on exam lab</strong> in a live, AWS-provisioned account, where you repair a broken AI-powered customer-intelligence agent.</p>
+  <div class="two-col">
+    <div class="card">
+      <h3>📋 The format</h3>
+      <ul>
+        <li><strong>140 minutes</strong> on the clock once you begin. Complete every challenge in that time.</li>
+        <li>A <strong>simulated business scenario</strong> and a <strong>live AWS environment</strong>, not a sandbox quiz.</li>
+        <li><strong>Procedural guidance, but no hints.</strong> You decide how to diagnose and fix.</li>
+        <li>Intermediate level · Database domain · Free on AWS Skill Builder · Credly badge on passing.</li>
+      </ul>
+      <div class="callout exam"><span class="callout-title">From the exam page itself</span>
+        If something looks broken, re-read the challenge guidance. Most issues come from a missed configuration step, not a platform fault. Read <em>all</em> the guidance before you touch anything.</div>
+    </div>
+    <div class="card">
+      <h3>🧰 Services in play</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0">
+        <span class="chip">🐘 Amazon Aurora PostgreSQL</span>
+        <span class="chip">🧭 pgvector</span>
+        <span class="chip">⚡ Amazon DynamoDB</span>
+        <span class="chip">📚 Bedrock Knowledge Bases</span>
+        <span class="chip">🧠 Amazon Bedrock</span>
+        <span class="chip">λ AWS Lambda</span>
+        <span class="chip">🔐 AWS Secrets Manager</span>
+        <span class="chip">📈 Amazon CloudWatch</span>
+        <span class="chip">🪣 Amazon S3</span>
+        <span class="chip">🗄️ Amazon RDS (Data API, Query Editor)</span>
+        <span class="chip">🔌 MCP servers</span>
+      </div>
+      <p class="muted">Recommended prior knowledge (per AWS): <em>AWS SimuLearn: Create Trustworthy LLMs with Aurora Vector Database</em>,
+        <em>AWS Generative AI Developer - Agentic AI Solutions and Tool Integrations</em>, and <em>AWS SimuLearn: Design a NoSQL Database</em>.
+        This bootcamp covers the same ground from scratch.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section container" id="objectives">
+  <h2 class="section-title">🗺️ The 7 objectives, and where you train each one</h2>
+  <p class="section-sub">Every objective on the exam page maps to a lecture, a lab and at least one break-fix drill here.</p>
+  <div class="objectives">
+    <div class="objective"><div><strong>Configure Amazon Aurora PostgreSQL for agent access</strong><span>Data API, Secrets Manager, IAM for rds-data, cluster vs instance ARNs.</span><br><a class="where" href="day2.html#lab-2-1">Day 1 · Lab 1.7 · Day 2 · Labs 2.1–2.2 · drills: wrong-secret, data-api, aurora-iam</a></div></div>
+    <div class="objective"><div><strong>Configure pgvector for document retrieval</strong><span>Extensions, vector(N) columns, distance operators, HNSW indexes.</span><br><a class="where" href="day2.html#lab-2-3">Day 2 · Labs 2.3–2.5 · drill: vector-dims</a></div></div>
+    <div class="objective"><div><strong>Configure Amazon DynamoDB for agent memory</strong><span>Key design, TTL, GSIs, Query vs Scan, IAM for the agent role.</span><br><a class="where" href="day3.html#lab-3-1">Day 3 · Labs 3.1–3.3 · drills: memory-iam, memory-table</a></div></div>
+    <div class="objective"><div><strong>Implement Amazon Bedrock Knowledge Bases with Aurora</strong><span>Vector store schema, bedrock_user, service role, sync, retrieval.</span><br><a class="where" href="day2.html#lab-2-6">Day 2 · Labs 2.6–2.8 · drills: kb-role, kb-id</a></div></div>
+    <div class="objective"><div><strong>Configure the Aurora MCP server for agent debugging</strong><span>awslabs.postgres-mcp-server over the Data API, read-only mode.</span><br><a class="where" href="day3.html#lab-3-4">Day 3 · Lab 3.4 · drill: mcp-config</a></div></div>
+    <div class="objective"><div><strong>Configure the DynamoDB MCP server for state inspection</strong><span>awslabs.dynamodb-mcp-server, region/profile, inspecting session state.</span><br><a class="where" href="day3.html#lab-3-5">Day 3 · Lab 3.5 · drill: mcp-config</a></div></div>
+    <div class="objective"><div><strong>Optimize the agent's product search queries</strong><span>EXPLAIN ANALYZE, pg_trgm GIN, composite b-trees, CloudWatch latency.</span><br><a class="where" href="day3.html#lab-3-6">Day 3 · Lab 3.6 · drill: slow-search</a></div></div>
+  </div>
+</section>
+
+<section class="section container" id="architecture">
+  <h2 class="section-title">🏗️ Meet Zest's data layer</h2>
+  <p class="section-sub">You'll deploy this whole stack with Terraform on Day 1, then spend the week learning it, breaking it and fixing it.</p>
+  <figure class="diagram">
+    <svg viewBox="0 0 930 440" role="img" aria-label="Architecture: staff ask the Zest agent Lambda, which calls Claude, Aurora PostgreSQL through the Data API, a Bedrock Knowledge Base whose vectors live in Aurora, and DynamoDB for memory. MCP servers in your IDE inspect Aurora and DynamoDB.">
+      <!-- wires -->
+      <path class="wire" d="M150 215 H220"/>
+      <path class="wire" d="M315 160 V100"/>
+      <path class="wire" d="M410 190 C470 190 460 85 520 85"/>
+      <path class="wire" d="M410 222 H520"/>
+      <path class="wire" d="M410 252 C470 252 460 335 520 335"/>
+      <path class="wire" d="M640 190 V150"/>
+      <path class="wire" d="M790 225 H760"/>
+      <path class="wire" style="stroke:var(--grape)" d="M790 60 H760"/>
+      <path class="wire" style="stroke:var(--grape)" d="M910 70 H922 V335 H760"/>
+      <!-- boxes -->
+      <rect class="box" x="20" y="175" width="130" height="80" rx="14"/>
+      <text class="title" x="85" y="208" text-anchor="middle">👩‍💼 Support staff</text>
+      <text class="label" x="85" y="230" text-anchor="middle">asks questions</text>
+
+      <rect class="box purple" x="220" y="20" width="190" height="80" rx="14"/>
+      <text class="title" x="315" y="54" text-anchor="middle">🧠 Claude</text>
+      <text class="label" x="315" y="76" text-anchor="middle">Claude in Amazon Bedrock</text>
+
+      <rect class="box hot" x="220" y="160" width="190" height="110" rx="16"/>
+      <text class="title" x="315" y="196" text-anchor="middle">λ Zest agent</text>
+      <text class="label" x="315" y="218" text-anchor="middle">AWS Lambda · Python</text>
+      <text class="label" x="315" y="238" text-anchor="middle">10 actions + agent loop</text>
+
+      <rect class="box blue" x="520" y="20" width="240" height="130" rx="16"/>
+      <text class="title" x="640" y="48" text-anchor="middle">🐘 Aurora PostgreSQL</text>
+      <text class="label" x="640" y="70" text-anchor="middle">Serverless v2 · RDS Data API</text>
+      <text class="label" x="640" y="92" text-anchor="middle">products · customers · orders</text>
+      <text class="label" x="640" y="112" text-anchor="middle">support_notes (pgvector)</text>
+      <text class="label" x="640" y="132" text-anchor="middle">bedrock_integration.bedrock_kb</text>
+
+      <rect class="box hot" x="520" y="190" width="240" height="70" rx="14"/>
+      <text class="title" x="640" y="218" text-anchor="middle">📚 Bedrock Knowledge Base</text>
+      <text class="label" x="640" y="240" text-anchor="middle">Titan Text Embeddings V2 · 1024 dims</text>
+
+      <rect class="box" x="790" y="190" width="120" height="70" rx="14"/>
+      <text class="title" x="850" y="220" text-anchor="middle">🪣 S3</text>
+      <text class="label" x="850" y="240" text-anchor="middle">policy docs</text>
+
+      <rect class="box green" x="520" y="300" width="240" height="70" rx="14"/>
+      <text class="title" x="640" y="328" text-anchor="middle">⚡ DynamoDB</text>
+      <text class="label" x="640" y="350" text-anchor="middle">agent memory · TTL · GSI</text>
+
+      <rect class="box purple" x="790" y="20" width="120" height="80" rx="14"/>
+      <text class="title" x="850" y="52" text-anchor="middle">🔌 MCP</text>
+      <text class="label" x="850" y="74" text-anchor="middle">servers in your IDE</text>
+
+      <rect class="box" x="20" y="380" width="480" height="50" rx="14"/>
+      <text class="label" x="260" y="410" text-anchor="middle">🔐 Secrets Manager · 🛡️ IAM roles · 📈 CloudWatch Logs, metrics, dashboard</text>
+
+      <!-- wire labels -->
+      <text class="label" x="478" y="160" text-anchor="middle">Data API</text>
+      <text class="label" x="465" y="214" text-anchor="middle">Retrieve</text>
+      <text class="label" x="462" y="318" text-anchor="middle">memory</text>
+      <text class="label" x="700" y="175" text-anchor="middle">stores vectors</text>
+      <text class="label" x="307" y="134" text-anchor="end">Messages API</text>
+    </svg>
+    <figcaption>The Lambda reaches Aurora over the HTTPS Data API, so it lives outside the VPC: no NAT gateway, cheap to run.</figcaption>
+  </figure>
+</section>
+
+<section class="section container" id="roadmap">
+  <h2 class="section-title">🛣️ Your 4-day mission</h2>
+  <p class="section-sub">Each day is about 7 hours: short lectures, then labs. Your XP and checkmarks are saved in this browser.</p>
+  <div class="roadmap">
+    <a class="day-card" href="day1.html">
+      <span class="day-num">1</span>
+      <span class="day-tag" style="margin-top:1rem">Launch Pad</span>
+      <h3>AWS foundations for the data layer</h3>
+      <ul><li>The agentic data layer</li><li>IAM, roles &amp; policy evaluation</li><li>Secrets Manager &amp; networking</li><li>Lambda + CloudWatch</li><li>Your first break-fix</li></ul>
+      <div data-day-progress="1"><div class="meter-label"><span>Progress</span><span class="meter-count">0/7 labs</span></div><div class="meter"><span></span></div></div>
+    </a>
+    <a class="day-card" href="day2.html">
+      <span class="day-num">2</span>
+      <span class="day-tag" style="margin-top:1rem">The Vector Vault</span>
+      <h3>Aurora, pgvector &amp; Knowledge Bases</h3>
+      <ul><li>Aurora Serverless v2 &amp; Data API</li><li>Embeddings &amp; distance operators</li><li>HNSW vs IVFFlat</li><li>Bedrock KB on Aurora, end to end</li></ul>
+      <div data-day-progress="2"><div class="meter-label"><span>Progress</span><span class="meter-count">0/8 labs</span></div><div class="meter"><span></span></div></div>
+    </a>
+    <a class="day-card" href="day3.html">
+      <span class="day-num">3</span>
+      <span class="day-tag" style="margin-top:1rem">Memory Lane &amp; the MCP Bridge</span>
+      <h3>DynamoDB memory, MCP &amp; tuning</h3>
+      <ul><li>Agent memory patterns</li><li>Key design, TTL, GSIs</li><li>Aurora + DynamoDB MCP servers</li><li>EXPLAIN, pg_trgm &amp; index design</li></ul>
+      <div data-day-progress="3"><div class="meter-label"><span>Progress</span><span class="meter-count">0/7 labs</span></div><div class="meter"><span></span></div></div>
+    </a>
+    <a class="day-card exam" href="day4.html">
+      <span class="day-num">4</span>
+      <span class="day-tag" style="margin-top:1rem">Operation Tangerine</span>
+      <h3>Break-fix practice &amp; mock exam</h3>
+      <ul><li>Exam strategy briefing</li><li>Drill Roulette</li><li>Triple-fault speedrun</li><li>140-minute mock exam with grader</li></ul>
+      <div data-day-progress="4"><div class="meter-label"><span>Progress</span><span class="meter-count">0/4 labs</span></div><div class="meter"><span></span></div></div>
+    </a>
+  </div>
+</section>
+
+<section class="section container" id="how">
+  <h2 class="section-title">🔁 Learn → Build → Break → Fix</h2>
+  <div class="cards">
+    <div class="card lift"><div class="big-emoji">📖</div><h3>Learn</h3><p>Short, focused modules with diagrams and "🎯 Exam lens" callouts that flag what the exam tests.</p></div>
+    <div class="card lift"><div class="big-emoji">🛠️</div><h3>Build</h3><p>Terraform deploys a real Aurora + DynamoDB + Bedrock + Lambda stack in your own AWS account.</p></div>
+    <div class="card lift"><div class="big-emoji">💥</div><h3>Break</h3><p><code>labctl break &lt;drill&gt;</code> injects the same kinds of faults the exam scenario hands you.</p></div>
+    <div class="card lift"><div class="big-emoji">✅</div><h3>Fix &amp; grade</h3><p><code>labctl check &lt;drill&gt;</code> grades your fix against live AWS state, much like an auto-graded exam lab.</p></div>
+  </div>
+</section>
+
+<section class="section narrow" id="xp">
+  <h2 class="section-title">🏅 Your rank</h2>
+  <div class="card">
+    <div data-overall-progress>
+      <div class="meter-label"><span>Progress to Tangerine Legend</span><span class="meter-count">0 XP</span></div>
+      <div class="meter" style="height:16px"><span></span></div>
+    </div>
+    <p class="muted" style="margin-top:1rem">Earn XP by completing labs and answering the end-of-day quizzes. Ranks go 🌱 Seedling → 🍊 Peel Cadet → 🛩️ Pulp Pilot → 🧃 Juice Engineer → 🏗️ Citrus Architect → 👑 Tangerine Legend.</p>
+    <div class="cta-row" style="margin-top:1rem"><a class="btn btn-primary btn-sm" href="labs.html">🗂️ Open the Quest Board</a><a class="btn btn-ghost btn-sm" href="cheatsheet.html">📇 Exam cheat sheet</a></div>
+  </div>
+</section>
+
+<div id="site-footer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

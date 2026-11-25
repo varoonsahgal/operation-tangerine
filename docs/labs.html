@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quest Board</title>
+  <meta name="description" content="Every Operation Tangerine lab and break-fix drill in one place, with your XP, rank and progress.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<section class="day-hero">
+  <span class="eyebrow">🗂️ Quest Board</span>
+  <h1>26 labs. 8 break-fix. 1 boss.</h1>
+  <p>Every hands-on lab in the bootcamp, including the 8 break-fix labs built on <code style="background:rgba(255,255,255,.2);border:0;color:#fff">labctl</code>'s 10 fault drills. Click one to jump to it, and mark it complete there to earn XP. Progress is saved in this browser.</p>
+  <div class="day-progress" data-overall-progress style="max-width:560px"><div class="meter-label"><span>Progress to 👑 Tangerine Legend</span><span class="meter-count">0 XP</span></div><div class="meter" style="height:14px"><span></span></div></div>
+</section>
+
+<main class="container">
+  <div class="board-filters" id="board-filters" role="toolbar" aria-label="Filter labs">
+    <button type="button" data-filter="all" aria-pressed="true">All</button>
+    <button type="button" data-filter="1" aria-pressed="false">Day 1 🚀</button>
+    <button type="button" data-filter="2" aria-pressed="false">Day 2 🔐</button>
+    <button type="button" data-filter="3" aria-pressed="false">Day 3 🔌</button>
+    <button type="button" data-filter="4" aria-pressed="false">Day 4 ⚡</button>
+    <button type="button" data-filter="drills" aria-pressed="false">🔧 Break-fix only</button>
+  </div>
+  <div class="board" id="board" data-filter="all"></div>
+
+  <h2 id="ranks" class="section-title" style="margin-top:4rem">🏅 Rank ladder</h2>
+  <p class="section-sub">Labs give 100–500 XP each. Every quiz question you get right on the first try adds 20 XP.</p>
+  <div class="ranks">
+    <div class="rank" data-xp="0"><div class="r-emoji">🌱</div><div class="r-name">Seedling</div><div class="r-xp">0 XP</div></div>
+    <div class="rank" data-xp="400"><div class="r-emoji">🍊</div><div class="r-name">Peel Cadet</div><div class="r-xp">400 XP</div></div>
+    <div class="rank" data-xp="1200"><div class="r-emoji">🛩️</div><div class="r-name">Pulp Pilot</div><div class="r-xp">1,200 XP</div></div>
+    <div class="rank" data-xp="2200"><div class="r-emoji">🧃</div><div class="r-name">Juice Engineer</div><div class="r-xp">2,200 XP</div></div>
+    <div class="rank" data-xp="3200"><div class="r-emoji">🏗️</div><div class="r-name">Citrus Architect</div><div class="r-xp">3,200 XP</div></div>
+    <div class="rank" data-xp="4200"><div class="r-emoji">👑</div><div class="r-name">Tangerine Legend</div><div class="r-xp">4,200 XP</div></div>
+  </div>
+
+  <h2 id="drills" class="section-title" style="margin-top:4rem">💥 The drill catalogue</h2>
+  <p class="section-sub">Every fault <code>labctl</code> can inject. Use <code>labctl break &lt;name&gt;</code> → fix → <code>labctl check &lt;name&gt;</code>.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Drill</th><th>Objective</th><th>What breaks</th><th>First practiced</th></tr>
+    <tr><td><code>wrong-secret</code></td><td>1 · Aurora access</td><td>Agent's DB secret env var</td><td><a href="day1.html#lab-1-7">Lab 1.7</a></td></tr>
+    <tr><td><code>data-api</code></td><td>1 · Aurora access</td><td>RDS Data API on the cluster</td><td><a href="day2.html#lab-2-2">Lab 2.2</a></td></tr>
+    <tr><td><code>aurora-iam</code></td><td>1 · Aurora access</td><td>Agent role's rds-data permission</td><td><a href="day2.html#lab-2-2">Lab 2.2</a></td></tr>
+    <tr><td><code>vector-dims</code></td><td>2 · pgvector</td><td>KB table shape, indexes, grants</td><td><a href="day2.html#lab-2-8">Lab 2.8</a></td></tr>
+    <tr><td><code>kb-role</code></td><td>4 · Bedrock KB</td><td>KB service role's secret access</td><td><a href="day2.html#lab-2-8">Lab 2.8</a></td></tr>
+    <tr><td><code>kb-id</code></td><td>4 · Bedrock KB</td><td>Agent's Knowledge Base ID</td><td><a href="day4.html#lab-4-2">Lab 4.2</a></td></tr>
+    <tr><td><code>memory-iam</code></td><td>3 · DynamoDB memory</td><td>Agent role's DynamoDB permissions</td><td><a href="day3.html#lab-3-3">Lab 3.3</a></td></tr>
+    <tr><td><code>memory-table</code></td><td>3 · DynamoDB memory</td><td>Agent's memory table name</td><td><a href="day3.html#lab-3-3">Lab 3.3</a></td></tr>
+    <tr><td><code>mcp-config</code></td><td>5 + 6 · MCP servers</td><td>Aurora + DynamoDB MCP config</td><td><a href="day3.html#lab-3-7">Lab 3.7</a></td></tr>
+    <tr><td><code>slow-search</code></td><td>7 · Query optimization</td><td>pg_trgm + product search indexes</td><td><a href="day3.html#lab-3-7">Lab 3.7</a></td></tr>
+  </table></div>
+</main>
+
+<div id="site-footer"></div>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

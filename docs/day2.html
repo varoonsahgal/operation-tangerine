@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 2 Vector Vault</title>
+  <meta name="description" content="Day 2 of Operation Tangerine: Aurora PostgreSQL Serverless v2, the RDS Data API, pgvector embeddings and indexes, and Amazon Bedrock Knowledge Bases on Aurora.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<section class="day-hero">
+  <span class="eyebrow">Day 2 · The Vector Vault 🔐</span>
+  <h1>Aurora, pgvector &amp; Knowledge Bases</h1>
+  <p>Zest's facts live in Aurora PostgreSQL, and so does its knowledge, as vectors. Today you connect the agent to Aurora, learn how vector search really works,
+     and build a Bedrock Knowledge Base on Aurora by hand, the way the exam expects.</p>
+  <div class="day-meta">
+    <span class="chip">🧪 8 labs</span><span class="chip">⏱ ~7 hours</span><span class="chip">🎯 Objectives 1, 2, 4</span><span class="chip">🐘 Aurora · 🧭 pgvector · 📚 Bedrock KB</span>
+  </div>
+  <div class="day-progress" data-day-progress="2"><div class="meter-label"><span>Today's progress</span><span class="meter-count">0/8 labs</span></div><div class="meter"><span></span></div></div>
+</section>
+
+<div class="page-grid">
+  <aside class="toc" id="toc"></aside>
+  <main>
+
+<div class="callout tip"><span class="callout-title">Morning warm-up (every day)</span>
+<pre><code class="language-bash">alias labctl="python3 $(pwd)/labctl/labctl.py"   # from the repo root
+eval "$(labctl env)"
+labctl status</code></pre></div>
+
+<h2 id="schedule">🗓️ Schedule</h2>
+<ol class="timeline">
+  <li><span class="time">09:00</span><span class="what">Warm-up &amp; Day 1 recap</span></li>
+  <li><span class="time">09:15</span><span class="what">Module 1: Aurora PostgreSQL architecture &amp; the Data API</span></li>
+  <li class="lab"><span class="time">09:45</span><span class="what"><a href="#lab-2-1">Lab 2.1 Data API &amp; Query Editor</a></span></li>
+  <li><span class="time">10:10</span><span class="what">Module 2: Connecting agents to Aurora</span></li>
+  <li class="lab"><span class="time">10:30</span><span class="what"><a href="#lab-2-2">Lab 2.2 Agent ↔ Aurora Tools</a> (+ data-api and aurora-iam drills)</span></li>
+  <li><span class="time">11:00</span><span class="what">Module 3: Embeddings &amp; vector math</span></li>
+  <li class="lab"><span class="time">11:30</span><span class="what"><a href="#lab-2-3">Lab 2.3 pgvector Fruit Playground</a></span></li>
+  <li class="break"><span class="time">12:00</span><span class="what">🥗 Lunch</span></li>
+  <li><span class="time">13:00</span><span class="what">Module 4: pgvector indexes: HNSW vs IVFFlat</span></li>
+  <li class="lab"><span class="time">13:30</span><span class="what"><a href="#lab-2-4">Lab 2.4 Semantic Support Notes</a></span></li>
+  <li><span class="time">14:00</span><span class="what">Module 5: Bedrock Knowledge Bases on Aurora</span></li>
+  <li class="lab"><span class="time">14:25</span><span class="what"><a href="#lab-2-5">Lab 2.5 Build the KB Vector Store</a> → <a href="#lab-2-6">Lab 2.6 Knowledge Base on Aurora</a></span></li>
+  <li class="lab"><span class="time">15:35</span><span class="what"><a href="#lab-2-7">Lab 2.7 Metadata Filters &amp; Hybrid Search</a></span></li>
+  <li class="lab"><span class="time">16:00</span><span class="what"><a href="#lab-2-8">Lab 2.8 Break-Fix: The Vault Collapses</a></span></li>
+  <li><span class="time">16:40</span><span class="what"><a href="#quiz">Quiz</a> &amp; wrap-up</span></li>
+</ol>
+
+<!-- ================================================================ M1 -->
+<h2 id="m1">🐘 Module 1 · Aurora PostgreSQL &amp; the Data API</h2>
+<div class="concepts">
+  <div class="concept"><h4>Cluster</h4><p>One distributed storage volume (6 copies across 3 AZs) shared by all instances. Most settings and the Data API live here.</p></div>
+  <div class="concept"><h4>Instances</h4><p>Compute that attaches to the volume: one writer, up to 15 readers. Ours is one <code>db.serverless</code> writer.</p></div>
+  <div class="concept"><h4>Serverless v2</h4><p>Capacity in ACUs (~2 GiB RAM + CPU each), scaling in 0.5-ACU steps between your min and max. Min 0 = auto-pause.</p></div>
+  <div class="concept"><h4>Endpoints</h4><p>Cluster (writer) endpoint, reader endpoint, and per-instance endpoints, all for TCP drivers. The Data API is separate.</p></div>
+</div>
+
+<h3>Cluster ARN vs instance ARN: know the difference</h3>
+<pre><code class="language-text">arn:aws:rds:us-east-1:111122223333:cluster:tangerine-student1-aurora          ← CLUSTER (Data API, Bedrock KB, MCP server)
+arn:aws:rds:us-east-1:111122223333:db:tangerine-student1-aurora-writer        ← INSTANCE (metrics, reboot, Performance Insights)</code></pre>
+<div class="callout exam"><span class="callout-title">Exam lens</span>
+  Anything that talks SQL over the Data API takes the <strong>cluster</strong> ARN: Bedrock KB's "Aurora DB cluster ARN", the Aurora MCP server's <code>--resource_arn</code>, your Lambda's env var. An instance ARN in one of those fields is a classic planted fault.</div>
+
+<h3>The RDS Data API</h3>
+<ul>
+  <li>SQL over HTTPS: <code>ExecuteStatement</code>, <code>BatchExecuteStatement</code>, <code>BeginTransaction</code> / <code>CommitTransaction</code> / <code>RollbackTransaction</code>.</li>
+  <li>Auth is IAM (<code>rds-data:*</code>) plus a Secrets Manager secret holding the DB user's credentials.</li>
+  <li>Typed, named parameters (<code>:name</code> + <code>stringValue</code>, <code>longValue</code>, …) keep you safe from SQL injection.</li>
+  <li>One statement per call. Synchronous calls stop waiting after 45 s (<code>continueAfterTimeout</code> lets the statement keep running).</li>
+  <li>Must be <strong>enabled</strong> on the cluster. For Aurora Serverless v2 and provisioned clusters, use <code>aws rds enable-http-endpoint --resource-arn &lt;cluster-arn&gt;</code> (the older <code>modify-db-cluster --enable-http-endpoint</code> was for Serverless v1).</li>
+</ul>
+
+<!-- =============================================================== LAB 2.1 -->
+<section class="lab" id="lab-2-1" data-lab="2.1">
+  <header class="lab-head"><span class="lab-badge">LAB 2.1</span><h3>Data API &amp; Query Editor</h3>
+    <div class="meta"><span class="chip">⏱ 20 min</span><span class="chip">🍊 Easy</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Talk to Aurora three ways (console Query Editor, AWS CLI, labctl) and see why the ARN type matters.</p>
+    <ol class="steps">
+      <li><strong>Console</strong>: RDS → <em>Query editor</em> → database instance or cluster: your cluster → <em>Connect with a Secrets Manager ARN</em> → paste the output of <code>echo $ADMIN_SECRET_ARN</code> → database <code>agentdb</code>. Run:
+<pre><code class="language-sql">SELECT segment, count(*) AS customers, round(avg(lifetime_value)) AS avg_ltv
+FROM customers GROUP BY segment ORDER BY avg_ltv DESC;</code></pre></li>
+      <li><strong>CLI with a typed parameter</strong>:
+<pre><code class="language-bash">aws rds-data execute-statement --resource-arn "$CLUSTER_ARN" --secret-arn "$ADMIN_SECRET_ARN" \
+  --database "$DB_NAME" --format-records-as JSON --query formattedRecords --output text \
+  --sql "SELECT customer_id, full_name, lifetime_value FROM customers WHERE segment = :seg ORDER BY lifetime_value DESC LIMIT 3" \
+  --parameters '[{"name":"seg","value":{"stringValue":"enterprise"}}]' | python3 -m json.tool</code></pre></li>
+      <li>Inspect the cluster: is the HTTP endpoint on? Which engine version and ACU range?
+<pre><code class="language-bash">aws rds describe-db-clusters --db-cluster-identifier "$CLUSTER_ID" \
+  --query 'DBClusters[0].{arn:DBClusterArn,dataApi:HttpEndpointEnabled,version:EngineVersion,acu:ServerlessV2ScalingConfiguration}'</code></pre></li>
+      <li>Now repeat step 2 with <code>--resource-arn "$WRITER_INSTANCE_ARN"</code>, the <strong>instance</strong> ARN. The Data API rejects it. Note the exact wording of the error, because you'll meet it again in Lab 3.7 and on Day 4.</li>
+      <li>Check which pgvector version you have (it decides which index features exist):
+<pre><code class="language-bash">labctl sql "SELECT extname, extversion FROM pg_extension ORDER BY 1"</code></pre></li>
+    </ol>
+    <div class="checkpoint">You got rows from the Query Editor and the CLI, saw the instance-ARN error, and know your pgvector version.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M2 -->
+<h2 id="m2">🔗 Module 2 · Connecting agents to Aurora</h2>
+<div class="table-wrap"><table>
+  <tr><th></th><th>RDS Data API (what Zest uses)</th><th>Direct driver (psycopg, JDBC…)</th></tr>
+  <tr><td>Network</td><td>HTTPS AWS endpoint, no VPC needed</td><td>TCP 5432 from inside the VPC (Lambda in VPC + NAT/endpoints)</td></tr>
+  <tr><td>Auth</td><td>IAM <code>rds-data:*</code> + Secrets Manager</td><td>Password from Secrets Manager, or IAM DB auth (<code>rds-db:connect</code>)</td></tr>
+  <tr><td>Connections</td><td>Managed for you</td><td>Pool them; use RDS Proxy for spiky Lambda traffic</td></tr>
+  <tr><td>Best for</td><td>Serverless agents, Bedrock KB, Query Editor, MCP</td><td>High-throughput, low-latency, long sessions</td></tr>
+</table></div>
+
+<h3>The 5-point "agent access" checklist</h3>
+<ol>
+  <li>☐ <strong>Data API enabled</strong> on the cluster.</li>
+  <li>☐ Agent role has <code>rds-data:ExecuteStatement</code> on the <strong>cluster ARN</strong>.</li>
+  <li>☐ Agent role has <code>secretsmanager:GetSecretValue</code> on the secret (plus <code>kms:Decrypt</code> if it uses a customer-managed key).</li>
+  <li>☐ Agent config names the right <strong>cluster ARN, secret ARN and database</strong>.</li>
+  <li>☐ The DB user in the secret exists and has <strong>GRANTs</strong> on the tables the agent queries.</li>
+</ol>
+<div class="callout exam">Memorize this list. Objective 1 ("Configure Aurora PostgreSQL for agent access") is some combination of these five boxes, broken.</div>
+
+<!-- =============================================================== LAB 2.2 -->
+<section class="lab" id="lab-2-2" data-lab="2.2">
+  <header class="lab-head"><span class="lab-badge">LAB 2.2</span><h3>Agent ↔ Aurora Tools</h3>
+    <div class="meta"><span class="chip">⏱ 25 min</span><span class="chip">🍊🍊 Medium</span><span class="chip">💥 drill inside</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Watch Zest's SQL tools work, then lose (and restore) the Data API, and then a permission.</p>
+    <ol class="steps">
+      <li>Call the SQL tools and find the matching code in <code>terraform/lambda/agent.py</code> in your clone (<code>search_products</code>, <code>customer_profile</code>):
+<pre><code class="language-bash">labctl invoke search_products '{"query":"headphones","category":"audio","limit":3}'
+labctl invoke customer_profile '{"customer_id":"C00042"}'</code></pre></li>
+      <li>Break it:
+<pre><code class="language-bash">labctl break data-api
+labctl status</code></pre></li>
+      <li>Fix it <em>once in the console</em> (RDS → your cluster → <strong>Modify</strong> → Connectivity → enable <strong>RDS Data API</strong> → apply immediately), or with the CLI:
+<pre><code class="language-bash">aws rds enable-http-endpoint --resource-arn "$CLUSTER_ARN"</code></pre></li>
+      <li>Verify: <code>labctl check data-api</code></li>
+      <li>Second fault: <code>labctl break aurora-iam</code>. Use the error message to find what's missing in IAM → Roles → your Lambda role (<code>echo $LAMBDA_ROLE_NAME</code>) → <code>agent-data-access</code>. Fix it, then <code>labctl check aurora-iam</code>.</li>
+    </ol>
+    <details class="hint"><summary>Hint for the IAM fault</summary><div class="details-body">The error names the exact action that was denied. Compare it with the <code>AuroraDataApi</code> statement's action list.</div></details>
+    <details class="solution"><summary>Solution</summary><div class="details-body">
+      <code>rds-data:ExecuteStatement</code> was removed from the <code>AuroraDataApi</code> statement (only Batch/transaction actions were left). Add it back on the cluster ARN. Zest uses <code>ExecuteStatement</code> for every query.</div></details>
+    <div class="checkpoint">Both <code>labctl check data-api</code> and <code>labctl check aurora-iam</code> show 🏆.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M3 -->
+<h2 id="m3">🧭 Module 3 · Embeddings &amp; vector math</h2>
+<p>An <strong>embedding model</strong> turns text into a list of numbers (a vector) so that texts with <em>similar meaning</em> land <em>close together</em>.
+"My drone battery dies fast" and "Turbo Drone only flies 4 minutes" share few words but end up near each other.</p>
+<div class="concepts">
+  <div class="concept"><h4>Titan Text Embeddings V2</h4><p><code>amazon.titan-embed-text-v2:0</code>. Output 1024 dims by default (or 512 / 256). Optional normalization.</p></div>
+  <div class="concept"><h4>Dimensions must match</h4><p>A <code>vector(1024)</code> column only accepts 1024-length vectors. Change models, change the column.</p></div>
+  <div class="concept"><h4>pgvector</h4><p>The extension is named <code>vector</code>: <code>CREATE EXTENSION vector;</code> (not "pgvector"). Types: <code>vector</code>, <code>halfvec</code>, <code>sparsevec</code>.</p></div>
+  <div class="concept"><h4>Similarity search</h4><p><code>ORDER BY embedding &lt;=&gt; :query_vec LIMIT k</code>: the k nearest neighbours.</p></div>
+</div>
+<div class="table-wrap"><table>
+  <tr><th>Operator</th><th>Distance</th><th>Index opclass</th><th>Use when</th></tr>
+  <tr><td><code>&lt;-&gt;</code></td><td>Euclidean (L2)</td><td><code>vector_l2_ops</code></td><td>Magnitude matters</td></tr>
+  <tr><td><code>&lt;=&gt;</code></td><td>Cosine distance (1 − cos θ)</td><td><code>vector_cosine_ops</code></td><td>Text embeddings (most common; Bedrock KB)</td></tr>
+  <tr><td><code>&lt;#&gt;</code></td><td>Negative inner product</td><td><code>vector_ip_ops</code></td><td>Normalized vectors, fastest</td></tr>
+  <tr><td><code>&lt;+&gt;</code></td><td>Manhattan (L1)</td><td><code>vector_l1_ops</code></td><td>Rare</td></tr>
+</table></div>
+
+<!-- =============================================================== LAB 2.3 -->
+<section class="lab" id="lab-2-3" data-lab="2.3">
+  <header class="lab-head"><span class="lab-badge">LAB 2.3</span><h3>pgvector Fruit Playground</h3>
+    <div class="meta"><span class="chip">⏱ 25 min</span><span class="chip">🍊 Easy</span><span class="chip">🍋 Fun</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Build intuition with 3-dimensional "flavor vectors" <code>[sweet, sour, bitter]</code> that you can check by eye.</p>
+    <ol class="steps">
+      <li>Create and query the playground (<code>sql/05_pgvector_playground.sql</code>):
+<pre><code class="language-bash">labctl db-setup playground</code></pre>
+        Which fruit is closest to a tangerine by L2? By cosine? Do they agree? (Skip the tangerine row itself at distance 0.)</li>
+      <li>Which fruit is most like a lemon?
+<pre><code class="language-bash">labctl sql "SELECT fruit, round((flavor &lt;=&gt; (SELECT flavor FROM fruit_vectors WHERE fruit='lemon'))::numeric, 3) AS dist FROM fruit_vectors WHERE fruit &lt;&gt; 'lemon' ORDER BY dist LIMIT 3"</code></pre></li>
+      <li>Cosine ignores magnitude, L2 doesn't. Predict both answers, then run:
+<pre><code class="language-bash">labctl sql "SELECT '[1,2,3]'::vector &lt;=&gt; '[2,4,6]'::vector AS cosine, '[1,2,3]'::vector &lt;-&gt; '[2,4,6]'::vector AS l2"</code></pre></li>
+      <li>Break it on purpose: insert a 2-dimensional durian into a 3-dimensional column.
+<pre><code class="language-bash">labctl sql "INSERT INTO fruit_vectors VALUES ('durian', '[0.5, 0.5]')"</code></pre></li>
+    </ol>
+    <details class="solution"><summary>What you should see</summary><div class="details-body">
+      Orange is closest to tangerine by both metrics; mango is next by cosine. Step 3: cosine = 0 (same direction), L2 ≈ 3.74. Step 4 fails with <code>expected 3 dimensions, not 2</code>. Bedrock prints the same kind of error when a KB table is <code>vector(1536)</code> and Titan V2 sends 1024.</div></details>
+    <div class="checkpoint">You can explain why cosine distance is the usual choice for text embeddings.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M4 -->
+<h2 id="m4">⚡ Module 4 · pgvector indexes: HNSW vs IVFFlat</h2>
+<p>Without an index, a similarity query computes the distance to <em>every row</em>: exact, but O(n). Approximate nearest-neighbour (ANN) indexes trade a little recall for a lot of speed.</p>
+<div class="table-wrap"><table>
+  <tr><th></th><th>HNSW</th><th>IVFFlat</th></tr>
+  <tr><td>Structure</td><td>Multi-layer proximity graph</td><td>k-means clusters ("lists")</td></tr>
+  <tr><td>Build</td><td>Slower, more memory; can be built on an empty table</td><td>Faster; needs data first (to train the lists)</td></tr>
+  <tr><td>Query speed / recall</td><td>Excellent</td><td>Good; depends on <code>probes</code></td></tr>
+  <tr><td>Build knobs</td><td><code>m</code> (16), <code>ef_construction</code> (64)</td><td><code>lists</code> (≈ rows/1000)</td></tr>
+  <tr><td>Query knob</td><td><code>SET hnsw.ef_search = 40</code></td><td><code>SET ivfflat.probes = 1</code></td></tr>
+  <tr><td>Bedrock KB guidance</td><td colspan="2">HNSW with <code>vector_cosine_ops</code> on the embedding column</td></tr>
+</table></div>
+<div class="callout gotcha"><span class="callout-title">Why isn't my vector index used?</span>
+  <ul>
+    <li><strong>Operator ≠ opclass</strong>: index built with <code>vector_l2_ops</code>, query uses <code>&lt;=&gt;</code> → sequential scan.</li>
+    <li>No <code>ORDER BY distance LIMIT k</code> → the planner can't use the ANN index.</li>
+    <li>Tiny table → the planner correctly decides a seq scan is cheaper.</li>
+    <li>Heavy <code>WHERE</code> filters + ANN can return fewer than k rows; pgvector 0.8+ adds iterative scans (<code>hnsw.iterative_scan</code>).</li>
+  </ul></div>
+
+<!-- =============================================================== LAB 2.4 -->
+<section class="lab" id="lab-2-4" data-lab="2.4">
+  <header class="lab-head"><span class="lab-badge">LAB 2.4</span><h3>Semantic Support Notes</h3>
+    <div class="meta"><span class="chip">⏱ 30 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Give Zest semantic memory of past tickets with real Titan embeddings, then watch an HNSW index change a query plan.</p>
+    <ol class="steps">
+      <li>Embed 30 historical support notes into <code>support_notes.embedding vector(1024)</code>:
+<pre><code class="language-bash">labctl embed-notes</code></pre></li>
+      <li>Ask in plain language. The notes share almost no words with your query:
+<pre><code class="language-bash">labctl invoke similar_notes '{"query":"my quadcopter only flies for a few minutes","k":3}'
+labctl invoke similar_notes '{"query":"I see two payments on my card for one order","k":3}'</code></pre></li>
+      <li>Build a 20,000-row benchmark table of random 64-dimensional vectors:
+<pre><code class="language-bash">labctl sql "CREATE TABLE IF NOT EXISTS vec_bench (id int PRIMARY KEY, embedding vector(64))"
+labctl sql "INSERT INTO vec_bench SELECT g, ARRAY(SELECT random() FROM generate_series(1,64) WHERE g &gt; 0)::vector(64) FROM generate_series(1,20000) g ON CONFLICT DO NOTHING"</code></pre></li>
+      <li>Exact search: note the plan and the execution time:
+<pre><code class="language-bash">labctl sql "EXPLAIN ANALYZE SELECT id FROM vec_bench ORDER BY embedding &lt;-&gt; (SELECT embedding FROM vec_bench WHERE id = 1) LIMIT 5"</code></pre></li>
+      <li>Add an HNSW index for L2 and re-run step 4:
+<pre><code class="language-bash">labctl sql "CREATE INDEX IF NOT EXISTS vec_bench_hnsw_l2 ON vec_bench USING hnsw (embedding vector_l2_ops)"</code></pre></li>
+      <li>Now query with <strong>cosine</strong> instead. Is the index used? Fix it with a second index.
+<pre><code class="language-bash">labctl sql "EXPLAIN ANALYZE SELECT id FROM vec_bench ORDER BY embedding &lt;=&gt; (SELECT embedding FROM vec_bench WHERE id = 1) LIMIT 5"</code></pre></li>
+    </ol>
+    <details class="solution"><summary>Solution</summary><div class="details-body">
+      Step 4: <code>Seq Scan on vec_bench</code> + sort. Step 5: <code>Index Scan using vec_bench_hnsw_l2</code>, usually far faster. Step 6: back to a seq scan, because the opclass doesn't match the operator.
+      Fix: <code>CREATE INDEX vec_bench_hnsw_cos ON vec_bench USING hnsw (embedding vector_cosine_ops);</code>. Clean up when done: <code>labctl sql "DROP TABLE vec_bench"</code>.</div></details>
+    <div class="checkpoint"><code>similar_notes</code> finds the drone-battery and double-charge notes, and you've seen Seq Scan → Index Scan in a plan.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M5 -->
+<h2 id="m5">📚 Module 5 · Bedrock Knowledge Bases on Aurora</h2>
+<figure class="diagram">
+  <svg viewBox="0 0 900 230" role="img" aria-label="Ingestion: S3 docs, chunking, Titan embeddings, then rows written into the Aurora bedrock_kb table through the Data API with the bedrock_user secret. Query: Retrieve embeds the question and runs a vector search on the same table.">
+    <text class="title" x="10" y="22">INGESTION (sync job)</text>
+    <rect class="box" x="10" y="35" width="140" height="64" rx="12"/><text class="title" x="80" y="62" text-anchor="middle">🪣 S3 docs</text><text class="label" x="80" y="82" text-anchor="middle">.md + .metadata.json</text>
+    <path class="wire" d="M150 67 H190"/>
+    <rect class="box" x="190" y="35" width="140" height="64" rx="12"/><text class="title" x="260" y="62" text-anchor="middle">✂️ Chunking</text><text class="label" x="260" y="82" text-anchor="middle">fixed 300 tok / 20%</text>
+    <path class="wire" d="M330 67 H370"/>
+    <rect class="box purple" x="370" y="35" width="160" height="64" rx="12"/><text class="title" x="450" y="62" text-anchor="middle">🧠 Titan V2</text><text class="label" x="450" y="82" text-anchor="middle">→ vector(1024)</text>
+    <path class="wire" d="M530 67 H570"/>
+    <rect class="box blue" x="570" y="35" width="320" height="64" rx="12"/><text class="title" x="730" y="60" text-anchor="middle">🐘 bedrock_integration.bedrock_kb</text><text class="label" x="730" y="82" text-anchor="middle">via Data API · KB role · bedrock_user secret</text>
+    <text class="title" x="10" y="150">QUERY (Retrieve / RetrieveAndGenerate)</text>
+    <rect class="box hot" x="10" y="160" width="190" height="60" rx="12"/><text class="title" x="105" y="186" text-anchor="middle">λ Zest search_docs</text><text class="label" x="105" y="206" text-anchor="middle">bedrock:Retrieve</text>
+    <path class="wire" d="M200 190 H370"/>
+    <rect class="box purple" x="370" y="160" width="160" height="60" rx="12"/><text class="title" x="450" y="186" text-anchor="middle">embed question</text><text class="label" x="450" y="206" text-anchor="middle">same model!</text>
+    <path class="wire" d="M530 190 H570"/>
+    <rect class="box blue" x="570" y="160" width="320" height="60" rx="12"/><text class="title" x="730" y="186" text-anchor="middle">ORDER BY embedding &lt;=&gt; q LIMIT k</text><text class="label" x="730" y="206" text-anchor="middle">+ metadata filter / hybrid text match</text>
+    <path class="wire solid" style="stroke:var(--sky)" d="M730 99 V160"/>
+  </svg>
+  <figcaption>Bedrock writes and reads your Aurora table through the Data API, so the KB role needs Data API and secret permissions too.</figcaption>
+</figure>
+
+<h3>The Aurora vector store contract</h3>
+<div class="table-wrap"><table>
+  <tr><th>Requirement</th><th>Our value</th><th>If wrong…</th></tr>
+  <tr><td>Data API enabled on the cluster</td><td>✔</td><td>KB create/sync fails to reach the DB</td></tr>
+  <tr><td><code>vector</code> extension + schema + table</td><td><code>bedrock_integration.bedrock_kb</code></td><td>"table does not exist" at create time</td></tr>
+  <tr><td>Primary key field</td><td><code>id uuid</code></td><td rowspan="4">Create fails with a field-mapping / type error</td></tr>
+  <tr><td>Vector field (dims = model output)</td><td><code>embedding vector(1024)</code></td></tr>
+  <tr><td>Text field</td><td><code>chunks text</code></td></tr>
+  <tr><td>Bedrock-managed metadata field</td><td><code>metadata json</code></td></tr>
+  <tr><td>Custom metadata field (optional)</td><td><code>custom_metadata jsonb</code></td><td>Metadata filters don't work</td></tr>
+  <tr><td>HNSW index on embedding (cosine)</td><td><code>bedrock_kb_embedding_hnsw</code></td><td>Slow retrieval / setup check fails</td></tr>
+  <tr><td>GIN index on <code>to_tsvector('simple', chunks)</code></td><td><code>bedrock_kb_chunks_fts</code></td><td>Hybrid search unavailable</td></tr>
+  <tr><td>DB user with privileges, creds in Secrets Manager</td><td><code>bedrock_user</code></td><td>Auth / "permission denied for table"</td></tr>
+  <tr><td>KB service role permissions</td><td><code>kb-access</code> policy</td><td>AccessDenied on InvokeModel / rds-data / secret / S3</td></tr>
+</table></div>
+<div class="concepts">
+  <div class="concept"><h4>Sync = ingestion job</h4><p>Each sync is <strong>incremental</strong>: it embeds only new or changed docs and removes deleted ones. Status: <code>COMPLETE</code> or <code>FAILED</code> + <code>failureReasons</code>.</p></div>
+  <div class="concept"><h4>Retrieve</h4><p>Returns the top-k chunks with scores, source URI and metadata. Your agent reasons over them. Zest uses this.</p></div>
+  <div class="concept"><h4>RetrieveAndGenerate</h4><p>Retrieve + a model writes the answer with citations, in one call.</p></div>
+  <div class="concept"><h4>Metadata filters</h4><p>Sidecar <code>doc.md.metadata.json</code> → <code>{"metadataAttributes": {"category": "policy"}}</code> → filter <code>equals category=policy</code>.</p></div>
+</div>
+
+<!-- =============================================================== LAB 2.5 -->
+<section class="lab" id="lab-2-5" data-lab="2.5">
+  <header class="lab-head"><span class="lab-badge">LAB 2.5</span><h3>Build the KB Vector Store</h3>
+    <div class="meta"><span class="chip">⏱ 25 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Prepare Aurora to be a Bedrock vector store: schema, least-privilege user, table, indexes, grants.</p>
+    <ol class="steps">
+      <li>Read <code>sql/04_kb_vector_store.sql</code> top to bottom. For each statement, which row of the contract table above does it satisfy?</li>
+      <li>Run it. labctl fills in the bedrock_user password from its secret:
+<pre><code class="language-bash">labctl db-setup kb</code></pre>
+        <details class="hint"><summary>Prefer the Query Editor? (exam style)</summary><div class="details-body">
+          Get the password with <code>aws secretsmanager get-secret-value --secret-id "$KB_USER_SECRET_ARN" --query SecretString --output text</code>, paste it in place of <code>{{KB_USER_PASSWORD}}</code>, and run the file's statements one by one in the Query Editor as the admin user.</div></details></li>
+      <li>Verify the shape:
+<pre><code class="language-bash">labctl sql "SELECT attname, format_type(atttypid, atttypmod) AS type FROM pg_attribute WHERE attrelid = 'bedrock_integration.bedrock_kb'::regclass AND attnum &gt; 0"
+labctl sql "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'bedrock_integration'"</code></pre></li>
+      <li>Now that <code>bedrock_user</code> exists, run three queries as that user. The first two work; the last proves least privilege:
+<pre><code class="language-bash">for q in "SELECT current_user" "SELECT count(*) FROM bedrock_integration.bedrock_kb" "SELECT count(*) FROM products"; do
+  echo "== $q"; aws rds-data execute-statement --resource-arn "$CLUSTER_ARN" --secret-arn "$KB_USER_SECRET_ARN" \
+    --database "$DB_NAME" --sql "$q" --format-records-as JSON --query formattedRecords --output text
+done</code></pre></li>
+      <li>Grade your store with the same check the mock exam uses:
+<pre><code class="language-bash">labctl check vector-dims</code></pre></li>
+    </ol>
+    <div class="checkpoint"><code>labctl check vector-dims</code> is all ✔, and bedrock_user gets <code>permission denied for table products</code>.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 2.6 -->
+<section class="lab" id="lab-2-6" data-lab="2.6">
+  <header class="lab-head"><span class="lab-badge">LAB 2.6</span><h3>Knowledge Base on Aurora</h3>
+    <div class="meta"><span class="chip">⏱ 40 min</span><span class="chip">🍊🍊🍊 Exam-critical</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Create a Bedrock Knowledge Base by hand in the console with Aurora as the vector store, sync it, test it, and wire it into Zest.</p>
+    <ol class="steps">
+      <li>Print the values you'll paste:
+<pre><code class="language-bash">printf "KB role:        %s\nS3 URI:         s3://%s/docs/\nCluster ARN:    %s\nDatabase:       %s\nSecret ARN:     %s\n" \
+  "$KB_ROLE_NAME" "$DOCS_BUCKET" "$CLUSTER_ARN" "$DB_NAME" "$KB_USER_SECRET_ARN"</code></pre></li>
+      <li><strong>Bedrock console → Knowledge Bases → Create → Knowledge Base with vector store.</strong>
+        Name it <code>$NAME-product-kb</code> (run <code>echo $NAME</code>; e.g. <code>tangerine-student1-product-kb</code>). Under IAM permissions choose <strong>Use an existing service role</strong> → <code>$KB_ROLE_NAME</code>.</li>
+      <li><strong>Data source</strong>: Amazon S3, name <code>citrus-docs</code>, URI <code>s3://$DOCS_BUCKET/docs/</code>. Chunking: <em>Fixed-size</em>, 300 max tokens, 20% overlap.</li>
+      <li><strong>Embeddings</strong>: Titan Text Embeddings V2, 1024 dimensions, floating-point vectors.</li>
+      <li><strong>Vector store</strong>: <em>Use an existing vector store</em> → <strong>Amazon Aurora PostgreSQL Serverless</strong>, then map the fields:
+        <div class="table-wrap"><table>
+          <tr><th>Console field</th><th>Value</th></tr>
+          <tr><td>Aurora DB cluster ARN</td><td><code>$CLUSTER_ARN</code> (cluster, not instance!)</td></tr>
+          <tr><td>Database name</td><td><code>agentdb</code></td></tr>
+          <tr><td>Table name</td><td><code>bedrock_integration.bedrock_kb</code></td></tr>
+          <tr><td>Credentials secret ARN</td><td><code>$KB_USER_SECRET_ARN</code></td></tr>
+          <tr><td>Vector field / Text field / Bedrock-managed metadata field / Primary key</td><td><code>embedding</code> / <code>chunks</code> / <code>metadata</code> / <code>id</code></td></tr>
+          <tr><td>Custom metadata field</td><td><code>custom_metadata</code></td></tr>
+        </table></div></li>
+      <li>Create, then <strong>Sync</strong> the data source (or <code>labctl kb-sync</code>) and wait for <code>COMPLETE</code>.</li>
+      <li><strong>Test knowledge base</strong> panel → retrieval only → ask: <em>"How many days do Zest Club members have to return an item?"</em></li>
+      <li>Look at what Bedrock wrote into <em>your</em> table:
+<pre><code class="language-bash">labctl sql "SELECT count(*) AS chunks FROM bedrock_integration.bedrock_kb"
+labctl sql "SELECT left(chunks, 70) AS chunk, custom_metadata FROM bedrock_integration.bedrock_kb LIMIT 5"</code></pre></li>
+      <li>Wire it into Zest: put the KB ID in <code>terraform/terraform.tfvars</code> → <code>knowledge_base_id = "XXXXXXXXXX"</code>, then:
+<pre><code class="language-bash">(cd terraform &amp;&amp; terraform apply)
+eval "$(labctl env)"
+labctl invoke search_docs '{"query":"warranty on Stark electronics"}'
+labctl check kb-synced &amp;&amp; labctl check kb-id</code></pre></li>
+    </ol>
+    <details class="hint"><summary>Prefer the CLI? Same thing with <code>aws bedrock-agent</code></summary><div class="details-body">
+<pre><code class="language-bash">KB_ID=$(aws bedrock-agent create-knowledge-base --name "$NAME-product-kb" --role-arn "$KB_ROLE_ARN" \
+  --knowledge-base-configuration "{\"type\":\"VECTOR\",\"vectorKnowledgeBaseConfiguration\":{\"embeddingModelArn\":\"$EMBEDDING_MODEL_ARN\"}}" \
+  --storage-configuration "{\"type\":\"RDS\",\"rdsConfiguration\":{\"resourceArn\":\"$CLUSTER_ARN\",\"credentialsSecretArn\":\"$KB_USER_SECRET_ARN\",\"databaseName\":\"$DB_NAME\",\"tableName\":\"bedrock_integration.bedrock_kb\",\"fieldMapping\":{\"primaryKeyField\":\"id\",\"vectorField\":\"embedding\",\"textField\":\"chunks\",\"metadataField\":\"metadata\",\"customMetadataField\":\"custom_metadata\"}}}" \
+  --query knowledgeBase.knowledgeBaseId --output text)
+
+until [ "$(aws bedrock-agent get-knowledge-base --knowledge-base-id "$KB_ID" --query knowledgeBase.status --output text)" = ACTIVE ]; do sleep 5; done
+
+aws bedrock-agent create-data-source --knowledge-base-id "$KB_ID" --name citrus-docs \
+  --data-source-configuration "{\"type\":\"S3\",\"s3Configuration\":{\"bucketArn\":\"$DOCS_BUCKET_ARN\",\"inclusionPrefixes\":[\"docs/\"]}}"
+
+labctl kb-sync --kb "$KB_ID"</code></pre>
+      Or let Terraform build it: <code>create_knowledge_base = true</code> in tfvars (only after Lab 2.5).</div></details>
+    <details class="solution"><summary>Expected answers</summary><div class="details-body">Zest Club members get 45 days (standard is 30). Stark electronics get 3 years total warranty. About 8 docs become a few dozen chunks.</div></details>
+    <div class="checkpoint"><code>labctl status</code> is all ✔, including <code>knowledge_base</code>.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 2.7 -->
+<section class="lab" id="lab-2-7" data-lab="2.7">
+  <header class="lab-head"><span class="lab-badge">LAB 2.7</span><h3>Metadata Filters &amp; Hybrid Search</h3>
+    <div class="meta"><span class="chip">⏱ 20 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Narrow retrieval with metadata, and see where keyword matching beats pure semantics.</p>
+    <ol class="steps">
+      <li>Retrieve with a metadata filter (only product guides):
+<pre><code class="language-bash">aws bedrock-agent-runtime retrieve --knowledge-base-id "$KNOWLEDGE_BASE_ID" \
+  --retrieval-query text="My drone keeps drifting to one side" \
+  --retrieval-configuration '{"vectorSearchConfiguration":{"numberOfResults":3,"filter":{"equals":{"key":"category","value":"guide"}}}}' \
+  --query 'retrievalResults[].{score:score,src:location.s3Location.uri}'</code></pre></li>
+      <li>Same through the agent: <code>labctl invoke search_docs '{"query":"drone drifting","category":"guide"}'</code></li>
+      <li>Exact codes are hard for embeddings. Compare <code>SEMANTIC</code> and <code>HYBRID</code> for the ticket code <code>BILLING-DUP</code>:
+<pre><code class="language-bash">for t in SEMANTIC HYBRID; do echo "== $t"; aws bedrock-agent-runtime retrieve --knowledge-base-id "$KNOWLEDGE_BASE_ID" \
+  --retrieval-query text="BILLING-DUP" \
+  --retrieval-configuration "{\"vectorSearchConfiguration\":{\"numberOfResults\":2,\"overrideSearchType\":\"$t\"}}" \
+  --query 'retrievalResults[].location.s3Location.uri'; done</code></pre></li>
+      <li>Which index made hybrid search possible? Find it in <code>pg_indexes</code>.</li>
+    </ol>
+    <div class="callout info">Hybrid search mixes vector similarity with full-text matching (the GIN <code>to_tsvector</code> index on <code>chunks</code>). If your region or KB reports it unsupported, note that and move on. It's a bonus, not an exam objective.</div>
+    <div class="checkpoint">The filtered query returns only <code>drone-care-guide.md</code> / <code>headphones-guide.md</code> sources.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 2.8 -->
+<section class="lab" id="lab-2-8" data-lab="2.8">
+  <header class="lab-head"><span class="lab-badge">BREAK-FIX 2.8</span><h3>Break-Fix: The Vault Collapses</h3>
+    <div class="meta"><span class="chip">⏱ 30 min</span><span class="chip">🍊🍊🍊 Hard</span><span class="chip">💥 2 faults</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 A migration "upgraded" the vector table and a security review "tightened" the KB role. Now syncs fail. Make the Knowledge Base sync <code>COMPLETE</code> again.</p>
+    <ol class="steps">
+      <li>Inject both faults:
+<pre><code class="language-bash">labctl break vector-dims
+labctl break kb-role</code></pre></li>
+      <li><strong>Probe</strong>: <code>labctl kb-sync --full</code>. <code>--full</code> touches every doc so Bedrock really writes to the table; a plain sync would skip unchanged docs and hide the faults. Read every <code>failureReasons</code> line and the row count at the end.</li>
+      <li>Inspect the table (columns, types, indexes, grants). What changed?</li>
+      <li>Inspect the KB service role's <code>kb-access</code> policy. What's missing?</li>
+      <li>Fix both, re-sync with <code>labctl kb-sync --full</code>, then grade:
+<pre><code class="language-bash">labctl check vector-dims &amp;&amp; labctl check kb-role &amp;&amp; labctl check kb-synced</code></pre></li>
+    </ol>
+    <details class="hint"><summary>Hint</summary><div class="details-body">Fixing one fault makes the next error message appear. If the sync error changes, you're making progress.</div></details>
+    <details class="solution"><summary>Solution</summary><div class="details-body">
+      <p><strong>Fault 1:</strong> the table was recreated with <code>vector(1536)</code>, no indexes and no grants for bedrock_user. The table is empty, so you can fix it in place. Run these in the Query Editor, or one <code>labctl sql "…"</code> per statement (the Data API runs one statement per call):</p>
+<pre><code class="language-sql">ALTER TABLE bedrock_integration.bedrock_kb ALTER COLUMN embedding TYPE vector(1024);
+CREATE INDEX ON bedrock_integration.bedrock_kb USING hnsw (embedding vector_cosine_ops) WITH (ef_construction = 256);
+CREATE INDEX ON bedrock_integration.bedrock_kb USING gin (to_tsvector('simple', chunks));
+CREATE INDEX ON bedrock_integration.bedrock_kb USING gin (custom_metadata);
+GRANT SELECT, INSERT, UPDATE, DELETE ON bedrock_integration.bedrock_kb TO bedrock_user;</code></pre>
+      <p><strong>Fault 2:</strong> the <code>KbSecret</code> statement was removed. Add back <code>secretsmanager:GetSecretValue</code> on the bedrock_user secret ARN (IAM → Roles → KB role → <code>kb-access</code> → Edit).</p>
+      <p><strong>The trap:</strong> sync is incremental. The docs in S3 haven't changed, so a plain sync can finish <code>COMPLETE</code> while the recreated table stays empty. Force a full re-ingest by changing the docs (that's what <code>labctl kb-sync --full</code> does), or delete and re-create the data source.
+      Then check that <code>SELECT count(*) FROM bedrock_integration.bedrock_kb</code> is above zero.</p></div></details>
+    <div class="checkpoint">All three checks show 🏆, the table has rows again, and <code>search_docs</code> answers.</div>
+  </div>
+</section>
+
+<!-- ============================================================== QUIZ -->
+<h2 id="quiz">❓ Day 2 quiz</h2>
+<div class="quiz">
+  <div class="q" data-q="d2q1" data-answer="2">
+    <p class="q-text">The Bedrock KB console asks for an "Aurora DB cluster ARN". Which value is correct?</p>
+    <div class="options"><button class="opt"><code>arn:aws:rds:…:db:tangerine-student1-aurora-writer</code></button><button class="opt">The cluster's writer endpoint hostname</button><button class="opt"><code>arn:aws:rds:…:cluster:tangerine-student1-aurora</code></button><button class="opt">The secret ARN</button></div>
+    <p class="explain">The Data API and Bedrock KB work at the cluster level, so they need the <code>:cluster:</code> ARN.</p>
+  </div>
+  <div class="q" data-q="d2q2" data-answer="0">
+    <p class="q-text">Which statement enables pgvector?</p>
+    <div class="options"><button class="opt"><code>CREATE EXTENSION vector;</code></button><button class="opt"><code>CREATE EXTENSION pgvector;</code></button><button class="opt"><code>ALTER SYSTEM SET pgvector = on;</code></button><button class="opt">It's enabled in the cluster parameter group only</button></div>
+    <p class="explain">The project is pgvector; the extension is named <code>vector</code>.</p>
+  </div>
+  <div class="q" data-q="d2q3" data-answer="3">
+    <p class="q-text">A KB uses Titan Text Embeddings V2 (default settings) and its table has <code>embedding vector(1536)</code>. What happens on sync?</p>
+    <div class="options"><button class="opt">Bedrock pads vectors to 1536</button><button class="opt">Works, but slower</button><button class="opt">Bedrock silently truncates</button><button class="opt">Writes fail on a dimension mismatch (1024 vs 1536)</button></div>
+    <p class="explain">The column dimension must equal the embedding model's output dimension.</p>
+  </div>
+  <div class="q" data-q="d2q4" data-answer="1">
+    <p class="q-text">You built <code>USING hnsw (embedding vector_l2_ops)</code> but your query orders by <code>embedding &lt;=&gt; :q</code>. Result?</p>
+    <div class="options"><button class="opt">The index is used, results are approximate</button><button class="opt">The index isn't used; you get a sequential scan</button><button class="opt">Syntax error</button><button class="opt">Postgres rebuilds the index as cosine</button></div>
+    <p class="explain">The operator (<code>&lt;=&gt;</code> = cosine) must match the opclass (<code>vector_cosine_ops</code>).</p>
+  </div>
+  <div class="q" data-q="d2q5" data-answer="2">
+    <p class="q-text">A KB sync fails with an access error on Secrets Manager. Which principal is missing <code>GetSecretValue</code>?</p>
+    <div class="options"><button class="opt">The Lambda execution role</button><button class="opt">Your console user</button><button class="opt">The Knowledge Base service role</button><button class="opt">The bedrock_user database role</button></div>
+    <p class="explain">During sync, Bedrock calls the Data API as the KB service role, so that role must read the bedrock_user secret.</p>
+  </div>
+  <div class="q" data-q="d2q6" data-answer="0">
+    <p class="q-text">How do you enable the Data API on an Aurora Serverless v2 cluster from the CLI?</p>
+    <div class="options"><button class="opt"><code>aws rds enable-http-endpoint --resource-arn &lt;cluster-arn&gt;</code></button><button class="opt"><code>aws rds-data enable</code></button><button class="opt"><code>aws rds reboot-db-instance</code></button><button class="opt">Set <code>rds.data_api = 1</code> in the parameter group</button></div>
+    <p class="explain"><code>enable-http-endpoint</code> is the API for Serverless v2 and provisioned clusters.</p>
+  </div>
+</div>
+
+<div class="mission-nav">
+  <a href="day1.html"><small>← Previous mission</small><strong>Day 1 · Launch Pad</strong></a>
+  <a class="next" href="day3.html"><small>Next mission →</small><strong>Day 3 · Memory Lane &amp; the MCP Bridge</strong></a>
+</div>
+
+  </main>
+</div>
+
+<div id="site-footer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

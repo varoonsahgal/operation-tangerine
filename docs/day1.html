@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 1 Launch Pad</title>
+  <meta name="description" content="Day 1 of Operation Tangerine: AWS fundamentals for the agentic AI data layer: IAM, Secrets Manager, networking, Lambda and CloudWatch, plus your first break-fix drill.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<section class="day-hero">
+  <span class="eyebrow">Day 1 · Launch Pad 🚀</span>
+  <h1>AWS foundations for the agent data layer</h1>
+  <p>Before you can fix an AI agent's database, you have to follow its request: through IAM, Secrets Manager, the network, Lambda and the logs.
+     Today you deploy Zest, learn every hop it makes, and run your first break-fix drill.</p>
+  <div class="day-meta">
+    <span class="chip">🧪 7 labs</span><span class="chip">⏱ ~7 hours</span><span class="chip">🎯 Objective 1 foundations</span><span class="chip">🧰 IAM · Secrets · Lambda · CloudWatch</span>
+  </div>
+  <div class="day-progress" data-day-progress="1"><div class="meter-label"><span>Today's progress</span><span class="meter-count">0/7 labs</span></div><div class="meter"><span></span></div></div>
+</section>
+
+<div class="page-grid">
+  <aside class="toc" id="toc"></aside>
+  <main>
+
+<h2 id="schedule">🗓️ Schedule</h2>
+<ol class="timeline">
+  <li><span class="time">09:00</span><span class="what">Mission briefing: what the exam lab looks like and how this week works</span></li>
+  <li><span class="time">09:30</span><span class="what">Module 1: The agentic data layer</span></li>
+  <li class="lab"><span class="time">10:00</span><span class="what"><a href="#lab-1-1">Lab 1.1 Deploy the Rescue Base</a> (start <code>terraform apply</code>, keep learning while Aurora builds)</span></li>
+  <li><span class="time">10:15</span><span class="what">Module 2: IAM for agents: roles, policies and how AWS decides</span></li>
+  <li class="lab"><span class="time">11:00</span><span class="what"><a href="#lab-1-2">Lab 1.2 Seed the Citrus Database</a> · <a href="#lab-1-3">Lab 1.3 IAM Detective</a></span></li>
+  <li class="break"><span class="time">12:00</span><span class="what">🥗 Lunch</span></li>
+  <li><span class="time">13:00</span><span class="what">Module 3: Secrets Manager &amp; networking for databases</span></li>
+  <li class="lab"><span class="time">13:30</span><span class="what"><a href="#lab-1-4">Lab 1.4 Secrets Safari</a></span></li>
+  <li><span class="time">14:00</span><span class="what">Module 4: Lambda as the agent's tool runner</span></li>
+  <li class="lab"><span class="time">14:30</span><span class="what"><a href="#lab-1-5">Lab 1.5 Lambda Liftoff</a></span></li>
+  <li><span class="time">15:00</span><span class="what">Module 5: CloudWatch: logs, metrics, alarms</span></li>
+  <li class="lab"><span class="time">15:20</span><span class="what"><a href="#lab-1-6">Lab 1.6 CloudWatch Mission Control</a></span></li>
+  <li><span class="time">15:50</span><span class="what">Module 6: The PEEL break-fix method</span></li>
+  <li class="lab"><span class="time">16:10</span><span class="what"><a href="#lab-1-7">Lab 1.7 First Break-Fix: The Wrong Key</a></span></li>
+  <li><span class="time">16:40</span><span class="what"><a href="#quiz">Quiz</a> &amp; wrap-up</span></li>
+</ol>
+
+<!-- ================================================================ M1 -->
+<h2 id="m1">🧩 Module 1 · The agentic data layer</h2>
+<p>An AI agent is a model in a loop: it reads a request, decides which <strong>tool</strong> to call, reads the result, and repeats until it can answer.
+The model reasons, but <em>everything it knows about your business comes from the data layer</em>. If that layer is broken, the agent gives wrong answers or no answers.</p>
+
+<div class="concepts">
+  <div class="concept"><h4>🛠️ Tools → operational data</h4><p>Structured facts: customers, orders, products. Here that's Aurora PostgreSQL, queried with SQL through the RDS Data API.</p></div>
+  <div class="concept"><h4>📚 Knowledge → retrieval</h4><p>Unstructured documents (policies, guides) chunked, embedded and stored as vectors, then searched at question time. That's retrieval-augmented generation (RAG): Bedrock Knowledge Base → pgvector in Aurora.</p></div>
+  <div class="concept"><h4>🧠 Memory → state</h4><p>What was said, what the agent is working on, what it learned about the user. Fast key-value access: DynamoDB.</p></div>
+  <div class="concept"><h4>🔭 Observability → debugging</h4><p>Logs, metrics and MCP servers that let you (or another AI) inspect the databases while the agent runs.</p></div>
+</div>
+
+<div class="callout lore"><span class="callout-title">The story so far</span>
+  Citrus &amp; Co. sells 200,000 products to 5,000 customers. Support staff ask Zest things like "Why is customer C00042 upset, and are they covered by warranty?"
+  Zest answers through 10 Lambda actions: SQL tools (<code>search_products</code>, <code>customer_profile</code>), <code>search_docs</code>, <code>similar_notes</code>, memory tools, <code>health</code>, and <code>ask</code>, the Claude agent loop that ties them together.
+  Last night a "cost-saving refactor" broke half of them. That's the exam scenario in a nutshell.</div>
+
+<h3>Follow the request</h3>
+<p>Every failure you'll debug this week sits on one hop of this path. Learn the hops and you can find the break.</p>
+<ol>
+  <li><strong>Invoke</strong>: something calls the Lambda (you, a test, an API).</li>
+  <li><strong>Identity</strong>: Lambda runs as its <em>execution role</em>. Every AWS call it makes is checked by IAM.</li>
+  <li><strong>Configuration</strong>: env vars tell the code <em>which</em> cluster, secret, table and Knowledge Base to use.</li>
+  <li><strong>Credentials</strong>: the Data API fetches DB credentials from Secrets Manager <em>as the caller</em>.</li>
+  <li><strong>Service endpoint</strong>: the Data API must be enabled; the table must exist; the KB must be synced.</li>
+  <li><strong>Database</strong>: the DB user needs privileges; the schema, extensions and indexes must be right.</li>
+  <li><strong>Result</strong>: logs and metrics in CloudWatch tell you how it went.</li>
+</ol>
+<div class="callout exam"><span class="callout-title">Exam lens</span>
+  The exam lab is a multi-fault scenario: several hops are broken at once, across different services. Fixing hop 2 often reveals that hop 5 was <em>also</em> broken. That's normal. Keep following the request.</div>
+
+<!-- =============================================================== LAB 1.1 -->
+<section class="lab" id="lab-1-1" data-lab="1.1">
+  <header class="lab-head"><span class="lab-badge">LAB 1.1</span><h3>Deploy the Rescue Base</h3>
+    <div class="meta"><span class="chip">⏱ 30 min</span><span class="chip">🍊 Easy</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Deploy Zest's full data layer with Terraform and load its outputs into your shell.</p>
+    <ol class="steps">
+      <li>Follow the <a href="setup.html#deploy">Setup guide</a> through <code>terraform apply</code>. While it runs (~12–15 min), skim the Terraform files. Each one is commented:
+        <code>aurora.tf</code>, <code>dynamodb.tf</code>, <code>iam.tf</code>, <code>lambda.tf</code>, <code>bedrock_kb.tf</code>.</li>
+      <li>When it finishes, go back to the repo root (<code>cd ..</code> if you're still in <code>terraform/</code>) and read the outputs. Everything the labs need is in one map:
+<pre><code class="language-bash">terraform -chdir=terraform output lab</code></pre></li>
+      <li>Load those values into your shell as variables. You'll do this at the start of every day:
+<pre><code class="language-bash">alias labctl="python3 $(pwd)/labctl/labctl.py"
+eval "$(labctl env)"
+echo $CLUSTER_ARN $LAMBDA_NAME $MEMORY_TABLE</code></pre></li>
+      <li>Find each resource in the console: RDS → Databases, DynamoDB → Tables, Lambda → Functions, Secrets Manager, S3, CloudWatch → Dashboards.</li>
+    </ol>
+    <details class="why"><summary>Why is <code>enable_http_endpoint = true</code> in aurora.tf?</summary><div class="details-body">
+      That's the <strong>RDS Data API</strong>. It lets you run SQL over HTTPS with IAM auth instead of a TCP connection with a driver. Bedrock Knowledge Bases, the RDS Query Editor and the Aurora MCP server all use it, and so does our Lambda. Switch it off and all four break at once. You'll see that in a drill.</div></details>
+    <div class="checkpoint">Terraform shows <code>Apply complete!</code> and <code>echo $CLUSTER_ARN</code> prints an ARN that contains <code>:cluster:</code>.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 1.2 -->
+<section class="lab" id="lab-1-2" data-lab="1.2">
+  <header class="lab-head"><span class="lab-badge">LAB 1.2</span><h3>Seed the Citrus Database</h3>
+    <div class="meta"><span class="chip">⏱ 15 min</span><span class="chip">🍊 Easy</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Create the schema and load 300k rows (setup step 5), then ask Zest for its first health report.</p>
+    <ol class="steps">
+      <li>Run the schema and seed scripts (<code>sql/01_schema.sql</code>, <code>sql/02_seed.sql</code>) through the Data API:
+<pre><code class="language-bash">labctl db-setup            # = labctl db-setup schema seed</code></pre></li>
+      <li>Count rows with a one-off query:
+<pre><code class="language-bash">labctl sql "SELECT (SELECT count(*) FROM customers) AS customers, (SELECT count(*) FROM products) AS products, (SELECT count(*) FROM orders) AS orders"</code></pre></li>
+      <li>Get the agent's own health report:
+<pre><code class="language-bash">labctl status</code></pre></li>
+    </ol>
+    <div class="checkpoint">5,000 / 200,000 / 100,000 rows, and every health check is ✔ except <code>knowledge_base</code>, which you build on Day 2.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M2 -->
+<h2 id="m2">🛡️ Module 2 · IAM for agents</h2>
+<p>In every exam challenge, part of the question is: <em>who</em> is calling, and are they allowed? IAM answers that for every API call.</p>
+
+<div class="concepts">
+  <div class="concept"><h4>Principal</h4><p>Who is calling: a user, or a <strong>role</strong> assumed by a service. Our Lambda runs as <code>…-zest-agent-role</code>.</p></div>
+  <div class="concept"><h4>Trust policy</h4><p>Who may <em>assume</em> a role. Lambda's role trusts <code>lambda.amazonaws.com</code>; the KB role trusts <code>bedrock.amazonaws.com</code>.</p></div>
+  <div class="concept"><h4>Permissions policy</h4><p>What the role may <em>do</em>: actions × resources (× conditions). Identity-based, attached to the role.</p></div>
+  <div class="concept"><h4>Resource policy</h4><p>Attached to the resource (S3 bucket, secret, KMS key). Can grant or deny cross-account. Optional here.</p></div>
+</div>
+
+<h3>How AWS decides</h3>
+<figure class="diagram">
+  <svg viewBox="0 0 900 170" role="img" aria-label="IAM evaluation: explicit deny wins, then organization, boundary and session limits, then an allow is required, otherwise implicit deny.">
+    <rect class="box" x="10" y="45" width="150" height="80" rx="14"/><text class="title" x="85" y="80" text-anchor="middle">API request</text><text class="label" x="85" y="102" text-anchor="middle">action + resource</text>
+    <path class="wire" d="M160 85 H210"/>
+    <rect class="box hot" x="210" y="45" width="170" height="80" rx="14" style="stroke:var(--berry)"/><text class="title" x="295" y="80" text-anchor="middle">Explicit Deny?</text><text class="label" x="295" y="102" text-anchor="middle">anywhere → DENIED</text>
+    <path class="wire" d="M380 85 H430"/>
+    <rect class="box blue" x="430" y="45" width="200" height="80" rx="14"/><text class="title" x="530" y="78" text-anchor="middle">SCP / boundary /</text><text class="title" x="530" y="98" text-anchor="middle">session policy allow?</text><text class="label" x="530" y="116" text-anchor="middle">(if present)</text>
+    <path class="wire" d="M630 85 H680"/>
+    <rect class="box green" x="680" y="45" width="210" height="80" rx="14"/><text class="title" x="785" y="80" text-anchor="middle">An Allow matches?</text><text class="label" x="785" y="102" text-anchor="middle">yes → ALLOWED · no → implicit deny</text>
+  </svg>
+  <figcaption>Default is deny. An explicit Deny always wins. Without a matching Allow you get an <em>implicit</em> deny.</figcaption>
+</figure>
+
+<h3>Read the AccessDenied message. It tells you the fix.</h3>
+<pre><code class="language-text">User: arn:aws:sts::111122223333:assumed-role/tangerine-student1-zest-agent-role/tangerine-student1-zest-agent
+is not authorized to perform: dynamodb:PutItem
+on resource: arn:aws:dynamodb:us-east-1:111122223333:table/tangerine-student1-agent-memory
+because no identity-based policy allows the dynamodb:PutItem action</code></pre>
+<p>Four facts in one line: the <strong>principal</strong> (the Lambda role), the <strong>action</strong>, the <strong>resource</strong>, and the <strong>reason</strong> ("no identity-based policy allows" means add an Allow to the role; "explicit deny" means find and fix a Deny).</p>
+
+<h3>Who needs what in Zest's world</h3>
+<div class="table-wrap"><table>
+  <tr><th>Principal</th><th>Needs</th><th>On</th></tr>
+  <tr><td rowspan="5">Lambda execution role</td><td><code>rds-data:ExecuteStatement</code> (+ Batch/transactions)</td><td>Aurora <strong>cluster</strong> ARN</td></tr>
+  <tr><td><code>secretsmanager:GetSecretValue</code></td><td>The admin DB secret</td></tr>
+  <tr><td><code>dynamodb:GetItem/PutItem/Query/…</code></td><td>Memory table <strong>and</strong> <code>table/…/index/*</code></td></tr>
+  <tr><td><code>bedrock:Retrieve</code></td><td>The Knowledge Base</td></tr>
+  <tr><td><code>bedrock:InvokeModel</code>, <code>bedrock-mantle:CreateInference</code></td><td>Titan embeddings, Claude</td></tr>
+  <tr><td rowspan="4">KB service role</td><td><code>bedrock:InvokeModel</code></td><td>The embedding model</td></tr>
+  <tr><td><code>rds:DescribeDBClusters</code>, <code>rds-data:ExecuteStatement</code>, <code>rds-data:BatchExecuteStatement</code></td><td>Aurora cluster</td></tr>
+  <tr><td><code>secretsmanager:GetSecretValue</code></td><td>The <code>bedrock_user</code> secret</td></tr>
+  <tr><td><code>s3:ListBucket</code>, <code>s3:GetObject</code></td><td>Docs bucket and <code>bucket/*</code></td></tr>
+</table></div>
+<div class="callout gotcha"><span class="callout-title">Classic gotchas</span>
+  <ul>
+    <li>DynamoDB <strong>GSIs are separate resources</strong>: <code>…/table/name/index/*</code>. Query on a GSI fails if only the table ARN is listed.</li>
+    <li><code>s3:ListBucket</code> goes on the <em>bucket</em> ARN; <code>s3:GetObject</code> goes on <code>bucket/*</code>.</li>
+    <li>IAM changes are eventually consistent. Wait 5–10 seconds before retesting.</li>
+  </ul></div>
+
+<!-- =============================================================== LAB 1.3 -->
+<section class="lab" id="lab-1-3" data-lab="1.3">
+  <header class="lab-head"><span class="lab-badge">LAB 1.3</span><h3>IAM Detective</h3>
+    <div class="meta"><span class="chip">⏱ 25 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Read Zest's two roles like an auditor, and predict IAM decisions <em>before</em> testing them with the policy simulator.</p>
+    <ol class="steps">
+      <li>Who can assume the Lambda role? Look at its <strong>trust policy</strong>:
+<pre><code class="language-bash">aws iam get-role --role-name "$LAMBDA_ROLE_NAME" --query Role.AssumeRolePolicyDocument</code></pre></li>
+      <li>What may it do? List attached managed policies and read the inline policy:
+<pre><code class="language-bash">aws iam list-attached-role-policies --role-name "$LAMBDA_ROLE_NAME"
+aws iam get-role-policy --role-name "$LAMBDA_ROLE_NAME" --policy-name agent-data-access</code></pre></li>
+      <li><strong>Predict first</strong>, then simulate: which of these does the Lambda role allow on the memory table?
+        <code>dynamodb:PutItem</code>, <code>dynamodb:Scan</code>, <code>dynamodb:DeleteTable</code>
+<pre><code class="language-bash">aws iam simulate-principal-policy \
+  --policy-source-arn "$LAMBDA_ROLE_ARN" \
+  --action-names dynamodb:PutItem dynamodb:Scan dynamodb:DeleteTable \
+  --resource-arns "$MEMORY_TABLE_ARN" \
+  --query 'EvaluationResults[].[EvalActionName,EvalDecision]' --output table</code></pre></li>
+      <li>Can the Lambda read the <em>Knowledge Base's</em> secret? Predict, then simulate. (Remember the answer for Lab 1.7.)
+<pre><code class="language-bash">aws iam simulate-principal-policy --policy-source-arn "$LAMBDA_ROLE_ARN" \
+  --action-names secretsmanager:GetSecretValue --resource-arns "$KB_USER_SECRET_ARN" \
+  --query 'EvaluationResults[].EvalDecision'</code></pre></li>
+      <li>Open the <strong>KB service role</strong>'s trust policy. What do the <code>aws:SourceAccount</code> and <code>aws:SourceArn</code> conditions protect against?
+<pre><code class="language-bash">aws iam get-role --role-name "$KB_ROLE_NAME" --query Role.AssumeRolePolicyDocument</code></pre></li>
+    </ol>
+    <details class="hint"><summary>Hint for step 5</summary><div class="details-body">Search for "confused deputy". Without the conditions, another account's Bedrock resource could trick the Bedrock service into using <em>your</em> role.</div></details>
+    <details class="solution"><summary>Answers</summary><div class="details-body">
+      <ul>
+        <li>Trust: only <code>lambda.amazonaws.com</code> may assume the role.</li>
+        <li>PutItem: <code>allowed</code>. Scan and DeleteTable: <code>implicitDeny</code>. The agent never needs to scan or drop tables, so it can't (least privilege).</li>
+        <li>KB secret: <code>implicitDeny</code>. The <code>AuroraSecret</code> statement lists only the admin secret.</li>
+        <li>The conditions stop the confused-deputy problem: Bedrock may assume the role only for Knowledge Bases in <em>your</em> account.</li>
+      </ul></div></details>
+    <div class="checkpoint">You can say in one sentence each what a trust policy, a permissions policy and an implicit deny are.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M3 -->
+<h2 id="m3">🔐 Module 3 · Secrets Manager &amp; networking for databases</h2>
+<h3>Secrets Manager</h3>
+<p>Database passwords never go in code or env vars. They live in a <strong>secret</strong>, and services fetch them at runtime. An RDS-style secret is a JSON document:</p>
+<pre><code class="language-json">{ "engine": "postgres", "username": "agentadmin", "password": "•••", "host": "…cluster-xyz.us-east-1.rds.amazonaws.com",
+  "port": 5432, "dbname": "agentdb", "dbClusterIdentifier": "tangerine-student1-aurora" }</code></pre>
+<div class="concepts">
+  <div class="concept"><h4>ARN suffix</h4><p>Secret ARNs end in a random 6-character suffix, e.g. <code>…:secret:name-AbC123</code>. Copy the full ARN, don't hand-type it.</p></div>
+  <div class="concept"><h4>Caller's permissions</h4><p>The Data API reads the secret <em>as you</em>. Whoever calls <code>ExecuteStatement</code> needs <code>GetSecretValue</code> on that secret.</p></div>
+  <div class="concept"><h4>A secret is not a user</h4><p>A secret only holds credentials. The DB role (<code>CREATE ROLE …</code>) and its GRANTs must exist inside PostgreSQL too.</p></div>
+  <div class="concept"><h4>Rotation</h4><p>Secrets Manager can rotate passwords on a schedule. RDS can also manage the master password for you (<code>manage_master_user_password</code>).</p></div>
+</div>
+
+<h3>Networking in five bullets</h3>
+<ul>
+  <li><strong>VPC</strong>: your private network. <strong>Subnets</strong> live in one AZ each. A DB subnet group needs subnets in at least <strong>2 AZs</strong>.</li>
+  <li><strong>Security groups</strong>: stateful firewalls on network interfaces (ENIs). Aurora's SG allows 5432 only from inside the VPC.</li>
+  <li><strong>Private subnets</strong> have no route to the internet. Aurora doesn't need one.</li>
+  <li><strong>The Data API is an AWS HTTPS endpoint</strong>, not a socket into your VPC. Our Lambda calls it from outside the VPC: no NAT, no VPC endpoints.</li>
+  <li>If you <em>do</em> put a Lambda in a VPC (to use a driver like psycopg), it then needs a NAT gateway or <strong>VPC endpoints</strong> for Secrets Manager, Bedrock and DynamoDB. A <em>timeout</em> instead of an error usually means a missing network path.</li>
+</ul>
+<div class="callout exam"><span class="callout-title">Exam lens</span>
+  An error comes back quickly → usually IAM, config or the database. A call hangs until timeout → usually networking (SG, route, endpoint). The symptom narrows down which hop to check.</div>
+
+<!-- =============================================================== LAB 1.4 -->
+<section class="lab" id="lab-1-4" data-lab="1.4">
+  <header class="lab-head"><span class="lab-badge">LAB 1.4</span><h3>Secrets Safari</h3>
+    <div class="meta"><span class="chip">⏱ 20 min</span><span class="chip">🍊 Easy</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 See how the Data API uses secrets, and why a valid secret can still fail.</p>
+    <ol class="steps">
+      <li>Inspect both secrets' metadata. Note the 6-char ARN suffix:
+<pre><code class="language-bash">aws secretsmanager describe-secret --secret-id "$ADMIN_SECRET_ARN" --query '{Name:Name,ARN:ARN,Rotation:RotationEnabled}'
+aws secretsmanager describe-secret --secret-id "$KB_USER_SECRET_ARN" --query '{Name:Name,ARN:ARN}'</code></pre></li>
+      <li>Look at the admin secret's <em>keys</em> (don't paste the password anywhere):
+<pre><code class="language-bash">aws secretsmanager get-secret-value --secret-id "$ADMIN_SECRET_ARN" \
+  --query SecretString --output text | python3 -c 'import json,sys; print(sorted(json.load(sys.stdin)))'</code></pre></li>
+      <li>Run SQL through the Data API with the <strong>admin</strong> secret:
+<pre><code class="language-bash">aws rds-data execute-statement --resource-arn "$CLUSTER_ARN" --secret-arn "$ADMIN_SECRET_ARN" \
+  --database "$DB_NAME" --sql "SELECT current_user, version()" --format-records-as JSON \
+  --query formattedRecords --output text</code></pre></li>
+      <li>Now try the <strong>bedrock_user</strong> secret. It's a perfectly valid secret… so why does it fail?
+<pre><code class="language-bash">aws rds-data execute-statement --resource-arn "$CLUSTER_ARN" --secret-arn "$KB_USER_SECRET_ARN" \
+  --database "$DB_NAME" --sql "SELECT current_user"</code></pre></li>
+    </ol>
+    <details class="solution"><summary>Why step 4 fails</summary><div class="details-body">
+      The secret exists and you can read it, but the PostgreSQL role <code>bedrock_user</code> doesn't exist yet, so authentication fails. You create it in Lab 2.5.
+      Lesson: <strong>secret OK + IAM OK ≠ database OK</strong>. The credentials must match a real DB user with the right GRANTs.</div></details>
+    <div class="checkpoint">Step 3 prints <code>agentadmin</code>; step 4 fails with an authentication error, and you can explain why.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M4 -->
+<h2 id="m4">λ Module 4 · Lambda as the agent's tool runner</h2>
+<p>Zest is one Lambda function with an <strong>action router</strong>: the event's <code>action</code> field picks a tool. That's a common pattern for agent tool backends (Bedrock Agents calls them "action groups").</p>
+<pre data-label="agent.py (excerpt)"><code class="language-python">ACTIONS = {
+    "health": health,
+    "search_products": lambda e: search_products(e["query"], e.get("category"), ...),
+    "remember": lambda e: remember(e["session_id"], e.get("role", "user"), e["content"]),
+    "ask": lambda e: ask(e.get("session_id"), e["question"], e.get("customer_id")),
+    ...
+}
+
+def handler(event, context=None):
+    action = event.get("action", "health")
+    try:
+        result, ok = ACTIONS[action](event), True
+    except ClientError as e:                       # AWS said no: return the code + message
+        err = e.response["Error"]
+        result, ok = {"error": err["Code"], "message": err["Message"]}, False
+    log("agent_action", action=action, ok=ok, ...)  # one JSON line per call → CloudWatch
+    return {"ok": ok, "action": action, "result": result}</code></pre>
+<div class="concepts">
+  <div class="concept"><h4>Execution role</h4><p>The identity for every AWS SDK call the code makes. Credentials are injected automatically.</p></div>
+  <div class="concept"><h4>Environment variables</h4><p>Config: cluster ARN, secret ARN, table name, KB ID. A wrong value here is the #1 break-fix fault.</p></div>
+  <div class="concept"><h4>Timeout &amp; memory</h4><p>Zest: 120 s, 512 MB. A timeout shows up as <code>Task timed out</code> in logs, not as a clean error.</p></div>
+  <div class="concept"><h4>Layers</h4><p>Extra libraries (our Anthropic SDK) mounted at <code>/opt/python</code>. boto3 ships with the runtime.</p></div>
+</div>
+<div class="callout gotcha"><span class="callout-title"><code>update-function-configuration --environment</code> replaces ALL variables</span>
+  If you pass only the one you're fixing, every other variable is deleted. Edit in the console, or read-modify-write the full map (Lab 1.7 shows how).</div>
+
+<!-- =============================================================== LAB 1.5 -->
+<section class="lab" id="lab-1-5" data-lab="1.5">
+  <header class="lab-head"><span class="lab-badge">LAB 1.5</span><h3>Lambda Liftoff</h3>
+    <div class="meta"><span class="chip">⏱ 25 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Invoke the agent's tools by hand, read its config, and make it fail on purpose.</p>
+    <ol class="steps">
+      <li>Read the function's configuration:
+<pre><code class="language-bash">aws lambda get-function-configuration --function-name "$LAMBDA_NAME" \
+  --query '{Runtime:Runtime,Timeout:Timeout,Memory:MemorySize,Role:Role,Layers:Layers[].Arn,Env:Environment.Variables}'</code></pre></li>
+      <li>Invoke with the raw AWS CLI. Note the <code>StatusCode</code> it prints before you read the JSON:
+<pre><code class="language-bash">aws lambda invoke --function-name "$LAMBDA_NAME" \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"action":"search_products","query":"drone","category":"outdoor","limit":3}' \
+  /tmp/zest.json &amp;&amp; python3 -m json.tool /tmp/zest.json</code></pre></li>
+      <li>Try more tools with the <code>labctl</code> shortcut:
+<pre><code class="language-bash">labctl invoke customer_profile '{"customer_id":"C00042"}'
+labctl invoke search_products '{"query":"kettle","max_price":50}'</code></pre></li>
+      <li>Handled errors. Both of these come back with <code>"ok": false</code> and an <code>error</code> field, yet Lambda still returned <code>StatusCode</code> 200: the code caught the error.
+<pre><code class="language-bash">labctl invoke search_products '{}'          # missing field → handled, ok:false
+labctl invoke teleport                      # unknown action → handled, ok:false</code></pre></li>
+      <li>Make it fail on purpose: set the timeout to 1 second and ask Claude a question. Watch the log, then put it back with Terraform:
+<pre><code class="language-bash">aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --timeout 1 &gt;/dev/null
+aws lambda wait function-updated --function-name "$LAMBDA_NAME"     # config changes aren't instant
+labctl invoke ask '{"question":"Which drones are best rated?"}'
+(cd terraform &amp;&amp; terraform apply -auto-approve)     # the reset button</code></pre></li>
+    </ol>
+    <details class="solution"><summary>What you should have seen</summary><div class="details-body">
+      Handled errors still return HTTP 200 from Lambda with <code>"ok": false</code>: the code caught them. The 1-second timeout instead produces <code>"errorMessage": "… Task timed out after 1.00 seconds"</code> and a <code>FunctionError</code>: Lambda killed the code. Terraform noticed the drift (<code>timeout: 1 → 120</code>) and fixed it.</div></details>
+    <div class="checkpoint">You've seen a success, a handled error, and a timeout, and you can tell them apart.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M5 -->
+<h2 id="m5">📈 Module 5 · CloudWatch: logs, metrics, alarms</h2>
+<div class="concepts">
+  <div class="concept"><h4>Log groups</h4><p><code>/aws/lambda/&lt;fn&gt;</code> for Zest, <code>/aws/rds/cluster/&lt;id&gt;/postgresql</code> for Aurora (slow queries &gt; 250 ms).</p></div>
+  <div class="concept"><h4>Structured logs</h4><p>Zest prints one JSON object per event (<code>agent_action</code>, <code>sql</code>, <code>tool_call</code>), so Logs Insights can filter and aggregate on fields.</p></div>
+  <div class="concept"><h4>Metrics</h4><p>Namespace + name + dimensions. <code>AWS/Lambda Duration FunctionName=…</code>. Use p90/p99, not just averages.</p></div>
+  <div class="concept"><h4>Alarms</h4><p>Watch a metric against a threshold, then notify (SNS) or act. Handled errors are <em>not</em> Lambda <code>Errors</code>.</p></div>
+</div>
+<div class="table-wrap"><table>
+  <tr><th>Metric</th><th>Namespace</th><th>Tells you</th></tr>
+  <tr><td><code>Errors</code>, <code>Duration</code>, <code>Throttles</code></td><td>AWS/Lambda</td><td>Crashes/timeouts, latency, concurrency limits</td></tr>
+  <tr><td><code>ServerlessDatabaseCapacity</code>, <code>ACUUtilization</code></td><td>AWS/RDS</td><td>How hard Aurora Serverless v2 is working</td></tr>
+  <tr><td><code>CPUUtilization</code>, <code>DatabaseConnections</code></td><td>AWS/RDS</td><td>Load and connection pressure</td></tr>
+  <tr><td><code>ConsumedRead/WriteCapacityUnits</code>, <code>ThrottledRequests</code></td><td>AWS/DynamoDB</td><td>Memory traffic and hot partitions</td></tr>
+</table></div>
+
+<!-- =============================================================== LAB 1.6 -->
+<section class="lab" id="lab-1-6" data-lab="1.6">
+  <header class="lab-head"><span class="lab-badge">LAB 1.6</span><h3>CloudWatch Mission Control</h3>
+    <div class="meta"><span class="chip">⏱ 30 min</span><span class="chip">🍊🍊 Medium</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Generate traffic, find it in logs, measure it with Logs Insights, and alarm on the errors that Lambda's metrics miss.</p>
+    <ol class="steps">
+      <li>Generate traffic:
+<pre><code class="language-bash">for q in drone kettle tent lamp speaker router camera mug desk chair; do
+  labctl invoke search_products "{\"query\":\"$q\"}" &gt;/dev/null &amp;&amp; echo "searched $q"
+done
+labctl invoke search_products '{}' &gt;/dev/null   # one handled error</code></pre></li>
+      <li>Tail the logs live (Ctrl+C to stop):
+<pre><code class="language-bash">aws logs tail "/aws/lambda/$LAMBDA_NAME" --since 10m --format short --follow</code></pre></li>
+      <li>In <strong>CloudWatch → Logs Insights</strong>, pick the Zest log group and run:
+<pre><code class="language-sql">fields @timestamp, action, ok, duration_ms, error
+| filter event = "agent_action"
+| stats count(*) as calls, avg(duration_ms) as avg_ms, max(duration_ms) as max_ms by action, ok</code></pre>
+        Then find your slowest SQL:
+<pre><code class="language-sql">filter event = "sql"
+| stats count(*) as n, avg(ms) as avg_ms, max(ms) as max_ms by statement
+| sort avg_ms desc | limit 5</code></pre></li>
+      <li>Open the <strong>Mission Control</strong> dashboard (<code>$DASHBOARD</code>). Find your traffic spike.</li>
+      <li>Handled errors don't increment Lambda <code>Errors</code>. Turn them into a metric, then alarm on it:
+<pre><code class="language-bash">aws logs put-metric-filter --log-group-name "/aws/lambda/$LAMBDA_NAME" \
+  --filter-name agent-handled-errors \
+  --filter-pattern '{ $.event = "agent_action" &amp;&amp; $.ok IS FALSE }' \
+  --metric-transformations metricName=AgentHandledErrors,metricNamespace=Tangerine,metricValue=1,defaultValue=0
+
+aws cloudwatch put-metric-alarm --alarm-name "$NAME-agent-errors" \
+  --namespace Tangerine --metric-name AgentHandledErrors --statistic Sum \
+  --period 60 --evaluation-periods 1 --threshold 1 \
+  --comparison-operator GreaterThanOrEqualToThreshold --treat-missing-data notBreaching</code></pre></li>
+      <li>Trigger 3 handled errors, wait ~2 minutes, and watch the alarm go to <code>ALARM</code>:
+<pre><code class="language-bash">for i in 1 2 3; do labctl invoke search_products '{}' &gt;/dev/null; done
+aws cloudwatch describe-alarms --alarm-names "$NAME-agent-errors" --query 'MetricAlarms[0].StateValue'</code></pre></li>
+      <li>Bonus: find Aurora's slow-statement log lines (the seed queries took &gt; 250 ms):
+<pre><code class="language-bash">aws logs filter-log-events --log-group-name "/aws/rds/cluster/$CLUSTER_ID/postgresql" \
+  --filter-pattern '"duration:"' --max-items 5 --query 'events[].message'</code></pre></li>
+    </ol>
+    <div class="checkpoint">The alarm <code>…-agent-errors</code> reached <code>ALARM</code>, and you can name the slowest agent action.</div>
+  </div>
+</section>
+
+<!-- ================================================================ M6 -->
+<h2 id="m6">🍊 Module 6 · The PEEL break-fix method</h2>
+<p>Under a clock, people panic and change five things at once. Use <strong>PEEL</strong> instead, one fault at a time:</p>
+<div class="cards">
+  <div class="card"><div class="big-emoji">🔎</div><h3>P · Probe</h3><p>Reproduce it with the smallest call: <code>health</code>, one SQL statement, one <code>get-item</code>.</p></div>
+  <div class="card"><div class="big-emoji">📜</div><h3>E · Examine the error</h3><p>Read it fully. Error code + action + resource usually name the hop and the fix.</p></div>
+  <div class="card"><div class="big-emoji">🪜</div><h3>E · Eliminate hops</h3><p>Walk the request: invoke → role → config → secret → endpoint → DB. Which hop does the error point at?</p></div>
+  <div class="card"><div class="big-emoji">🔒</div><h3>L · Lock in &amp; verify</h3><p>Make one change, re-run the probe, confirm. Then move to the next fault, since there's often more than one.</p></div>
+</div>
+
+<!-- =============================================================== LAB 1.7 -->
+<section class="lab" id="lab-1-7" data-lab="1.7">
+  <header class="lab-head"><span class="lab-badge">BREAK-FIX 1.7</span><h3>First Break-Fix: The Wrong Key</h3>
+    <div class="meta"><span class="chip">⏱ 20 min</span><span class="chip">🍊🍊 Medium</span><span class="chip">💥 labctl drill</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Someone "tidied up" Zest's configuration and now it can't reach Aurora. Find the fault with PEEL and fix it without breaking anything else.</p>
+    <ol class="steps">
+      <li>Inject the fault (don't peek at what it does!):
+<pre><code class="language-bash">labctl break wrong-secret</code></pre></li>
+      <li><strong>Probe</strong>: <code>labctl status</code>. Which checks fail?</li>
+      <li><strong>Examine</strong> the full error text. Which action and which resource does it name?</li>
+      <li><strong>Eliminate</strong>: is it the role? The config? The secret? The database? (Your notes from Lab 1.3 step 4 will help.)</li>
+      <li><strong>Lock in</strong> the fix, then verify:
+<pre><code class="language-bash">labctl check wrong-secret</code></pre></li>
+    </ol>
+    <details class="hint"><summary>Hint 1</summary><div class="details-body">The error mentions Secrets Manager. Which secret ARN is the Lambda configured to use? Compare it with <code>$ADMIN_SECRET_ARN</code>.</div></details>
+    <details class="hint"><summary>Hint 2: safe CLI edit of one env var</summary><div class="details-body">
+<pre><code class="language-bash">aws lambda get-function-configuration --function-name "$LAMBDA_NAME" \
+  --query Environment.Variables &gt; /tmp/env.json
+python3 - &lt;&lt;'PY'
+import json, os
+p = "/tmp/env.json"; env = json.load(open(p))
+env["DB_SECRET_ARN"] = os.environ["ADMIN_SECRET_ARN"]
+json.dump({"Variables": env}, open(p, "w"))
+PY
+aws lambda update-function-configuration --function-name "$LAMBDA_NAME" --environment file:///tmp/env.json
+aws lambda wait function-updated --function-name "$LAMBDA_NAME"</code></pre></div></details>
+    <details class="solution"><summary>Solution &amp; debrief</summary><div class="details-body">
+      <p><code>DB_SECRET_ARN</code> pointed at the <em>bedrock_user</em> secret. The Lambda role can only read the admin secret, so the Data API call is denied.</p>
+      <p><strong>Right fix:</strong> point <code>DB_SECRET_ARN</code> back at the admin secret (console: Lambda → Configuration → Environment variables).</p>
+      <p><strong>Tempting wrong fix:</strong> granting the Lambda role access to the bedrock_user secret. IAM would then pass, but the login still fails: <code>bedrock_user</code> doesn't exist in PostgreSQL yet, and even after Lab 2.5 it has no privileges on <code>products</code>. You'd have widened permissions for nothing. Fix the <em>cause</em>, not the symptom.</p></div></details>
+    <div class="checkpoint"><code>labctl check wrong-secret</code> shows 🏆 FIXED!</div>
+  </div>
+</section>
+
+<!-- ============================================================== QUIZ -->
+<h2 id="quiz">❓ Day 1 quiz</h2>
+<div class="quiz">
+  <div class="q" data-q="d1q1" data-answer="1">
+    <p class="q-text">Zest's <code>remember</code> tool fails with "not authorized to perform: dynamodb:PutItem … because no identity-based policy allows". Where's the fix?</p>
+    <div class="options"><button class="opt">The Lambda role's trust policy</button><button class="opt">The Lambda execution role's permissions policy</button><button class="opt">The DynamoDB table's encryption settings</button><button class="opt">The Lambda function's timeout</button></div>
+    <p class="explain">"No identity-based policy allows" means the role (an identity) needs an Allow for that action on that table. The trust policy only controls who can <em>assume</em> the role.</p>
+  </div>
+  <div class="q" data-q="d1q2" data-answer="2">
+    <p class="q-text">An identity policy Allows <code>rds-data:ExecuteStatement</code>, but an SCP explicitly Denies it. Result?</p>
+    <div class="options"><button class="opt">Allowed: identity policies win</button><button class="opt">Allowed only during business hours</button><button class="opt">Denied: an explicit Deny always wins</button><button class="opt">It depends on which policy was created first</button></div>
+    <p class="explain">Explicit Deny anywhere in the evaluation chain overrides every Allow.</p>
+  </div>
+  <div class="q" data-q="d1q3" data-answer="0">
+    <p class="q-text">When Zest calls the RDS Data API with a secret ARN, whose permissions are used to read the secret?</p>
+    <div class="options"><button class="opt">The caller's (the Lambda execution role)</button><button class="opt">The RDS service-linked role</button><button class="opt">The secret's owner</button><button class="opt">Nobody's; the Data API bypasses IAM</button></div>
+    <p class="explain">The caller needs both <code>rds-data:ExecuteStatement</code> on the cluster and <code>secretsmanager:GetSecretValue</code> on the secret.</p>
+  </div>
+  <div class="q" data-q="d1q4" data-answer="3">
+    <p class="q-text">Why can Zest's Lambda run outside the VPC while Aurora sits in private subnets?</p>
+    <div class="options"><button class="opt">Aurora Serverless v2 is always public</button><button class="opt">Lambda shares every VPC automatically</button><button class="opt">The security group allows 0.0.0.0/0</button><button class="opt">The RDS Data API is an HTTPS AWS endpoint, not a direct socket into the VPC</button></div>
+    <p class="explain">Data API requests go to an AWS service endpoint authorized by IAM. No network path into the VPC is needed.</p>
+  </div>
+  <div class="q" data-q="d1q5" data-answer="1">
+    <p class="q-text">Your handler catches an exception and returns <code>{"ok": false}</code>. What happens to the <code>AWS/Lambda Errors</code> metric?</p>
+    <div class="options"><button class="opt">It increments by 1</button><button class="opt">Nothing: handled errors aren't Lambda errors; use a log metric filter</button><button class="opt">It increments only after 3 retries</button><button class="opt">The function is throttled</button></div>
+    <p class="explain">Lambda only counts errors it sees (uncaught exceptions, timeouts). Lab 1.6 built a metric filter for the handled ones.</p>
+  </div>
+  <div class="q" data-q="d1q6" data-answer="2">
+    <p class="q-text">You run <code>aws lambda update-function-configuration --environment Variables={KB_ID=abc123}</code>. What else just happened?</p>
+    <div class="options"><button class="opt">Nothing else</button><button class="opt">The function was redeployed from S3</button><button class="opt">Every other environment variable was removed</button><button class="opt">The role's policies were reset</button></div>
+    <p class="explain"><code>--environment</code> replaces the whole map. Edit in the console or read-modify-write all variables.</p>
+  </div>
+</div>
+
+<div class="mission-nav">
+  <a href="setup.html"><small>← Back</small><strong>Lab setup</strong></a>
+  <a class="next" href="day2.html"><small>Next mission →</small><strong>Day 2 · The Vector Vault</strong></a>
+</div>
+
+  </main>
+</div>
+
+<div id="site-footer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

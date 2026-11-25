@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Day 4 Operation Tangerine</title>
+  <meta name="description" content="Day 4 of Operation Tangerine: break-fix practice that simulates the AWS Databases for Agentic AI Demonstrated exam lab: drill roulette, a triple-fault speedrun and a graded 140-minute mock exam.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<section class="day-hero" style="background:radial-gradient(circle at 85% 20%,rgba(255,255,255,.22),transparent 30%),linear-gradient(135deg,#c2410c 0%,#e0445f 55%,#ff7a00 100%)">
+  <span class="eyebrow">Day 4 · Operation Tangerine ⚡</span>
+  <h1>Break it. Fix it. Beat the clock.</h1>
+  <p>No new theory today, just practice that feels like the exam: random faults, several at once, and a full 140-minute mock exam lab graded against your live AWS account.</p>
+  <div class="day-meta">
+    <span class="chip">🎰 Drill Roulette</span><span class="chip">🏃 Triple-fault speedrun</span><span class="chip">👾 140-min mock exam</span><span class="chip">🧾 Auto-grader</span>
+  </div>
+  <div class="day-progress" data-day-progress="4"><div class="meter-label"><span>Today's progress</span><span class="meter-count">0/4 labs</span></div><div class="meter"><span></span></div></div>
+</section>
+
+<div class="page-grid">
+  <aside class="toc" id="toc"></aside>
+  <main>
+
+<div class="callout tip"><span class="callout-title">Morning warm-up</span>
+<pre><code class="language-bash">alias labctl="python3 $(pwd)/labctl/labctl.py"   # from the repo root
+eval "$(labctl env)"
+labctl status</code></pre></div>
+
+<h2 id="schedule">🗓️ Schedule</h2>
+<ol class="timeline">
+  <li><span class="time">09:00</span><span class="what">Exam strategy briefing: the 12 rules below</span></li>
+  <li class="lab"><span class="time">09:30</span><span class="what"><a href="#lab-4-1">Lab 4.1 Drill Roulette</a>: 5 random faults, ~12 min each</span></li>
+  <li class="break"><span class="time">10:45</span><span class="what">☕ Break</span></li>
+  <li class="lab"><span class="time">11:00</span><span class="what"><a href="#lab-4-2">Lab 4.2 Triple-Fault Speedrun</a>: 3 faults, 30 minutes</span></li>
+  <li><span class="time">11:30</span><span class="what">Reset the environment (<a href="#reset">see below</a>) · 🥗 Lunch</span></li>
+  <li class="lab"><span class="time">12:30</span><span class="what"><a href="#lab-4-3">Lab 4.3 Mock Exam: Operation Tangerine</a> (140 minutes, until 14:50)</span></li>
+  <li class="break"><span class="time">14:50</span><span class="what">☕ Break</span></li>
+  <li><span class="time">15:00</span><span class="what"><a href="#debrief">Debrief</a>: walk through every challenge and the common mistakes</span></li>
+  <li class="lab"><span class="time">16:00</span><span class="what"><a href="#lab-4-4">Lab 4.4 Debrief &amp; Teardown</a> · book the real exam 🎓</span></li>
+</ol>
+
+<!-- ========================================================= STRATEGY -->
+<h2 id="strategy">🧠 The 12 rules of the exam lab</h2>
+<div class="cards">
+  <div class="card"><div class="big-emoji">📖</div><h3>1. Read everything first</h3><p>Spend the first ~10 minutes reading <em>all</em> the challenge guidance. The exam itself says most "broken" moments are a missed configuration step.</p></div>
+  <div class="card"><div class="big-emoji">🗒️</div><h3>2. Build an ARN scratchpad</h3><p>Cluster ARN, secret ARNs, table name, role names, KB ID. Copy them once and paste from there. No hand-typing.</p></div>
+  <div class="card"><div class="big-emoji">⏱️</div><h3>3. Time-box</h3><p>7 challenges in 140 min ≈ 17 min each + buffer. Stuck for 5 minutes? Move on and come back.</p></div>
+  <div class="card"><div class="big-emoji">🔎</div><h3>4. Probe before you poke</h3><p>Reproduce with the smallest call (Lambda test event, one SQL statement, one get-item) before changing anything.</p></div>
+  <div class="card"><div class="big-emoji">📜</div><h3>5. Errors are gifts</h3><p>AccessDenied names the principal, action and resource. ResourceNotFound names the thing. Read the whole message.</p></div>
+  <div class="card"><div class="big-emoji">1️⃣</div><h3>6. One change at a time</h3><p>Change, re-probe, confirm. Five changes at once means you don't know which one fixed it, or which one broke something else.</p></div>
+  <div class="card"><div class="big-emoji">🧅</div><h3>7. Expect layers</h3><p>Fixing a fault often reveals the next one behind it. A <em>new</em> error message means progress.</p></div>
+  <div class="card"><div class="big-emoji">🔐</div><h3>8. Least privilege still counts</h3><p>Add the specific action on the specific resource. <code>"*"</code> might pass a test, but it's the wrong answer.</p></div>
+  <div class="card"><div class="big-emoji">⚙️</div><h3>9. Config before code</h3><p>Wrong env var, ARN, region, database, table or KB ID: check config before suspecting the code.</p></div>
+  <div class="card"><div class="big-emoji">🐘</div><h3>10. The DB has its own rules</h3><p>IAM OK + secret OK can still fail inside PostgreSQL: missing role, GRANT, extension, index or wrong vector dims.</p></div>
+  <div class="card"><div class="big-emoji">🖱️</div><h3>11. Fastest tool wins</h3><p>Console for one-off edits (env vars, Data API toggle), CLI or Query Editor for SQL and checks. Mind the <code>--environment</code> replace trap.</p></div>
+  <div class="card"><div class="big-emoji">✅</div><h3>12. Verify like a grader</h3><p>The grader checks end state, not effort. After each fix, confirm the exact success condition in the guidance.</p></div>
+</div>
+
+<h3>The 60-second triage map</h3>
+<div class="table-wrap"><table>
+  <tr><th>You see…</th><th>Look at…</th></tr>
+  <tr><td><span class="err">HttpEndpoint is not enabled</span></td><td>Data API on the cluster</td></tr>
+  <tr><td><span class="err">AccessDeniedException … not authorized to perform: X on resource: Y</span></td><td>The named principal's policy, action X, resource Y (GSIs: <code>/index/*</code>)</td></tr>
+  <tr><td><span class="err">… secretsmanager:GetSecretValue …</span></td><td>Which secret ARN is configured vs. which one the role may read</td></tr>
+  <tr><td><span class="err">password authentication failed / role does not exist</span></td><td>DB user in the secret vs. roles in PostgreSQL</td></tr>
+  <tr><td><span class="err">permission denied for table …</span></td><td>GRANTs for that DB user</td></tr>
+  <tr><td><span class="err">expected 1536 dimensions, not 1024</span></td><td>vector(N) column vs. embedding model dims</td></tr>
+  <tr><td><span class="err">ResourceNotFoundException (DynamoDB)</span>, or AccessDenied naming a table that isn't yours</td><td>Table name in config, and region</td></tr>
+  <tr><td><span class="err">KB_ID is not set / ValidationException knowledgeBaseId</span></td><td>Agent config: KB ID</td></tr>
+  <tr><td><span class="err">Ingestion job FAILED</span></td><td><code>failureReasons</code>, then the KB role, the table shape and grants</td></tr>
+  <tr><td>Sync COMPLETE but retrieval returns nothing</td><td>Sync is incremental: unchanged docs aren't re-ingested into a recreated table. Force a full re-ingest.</td></tr>
+  <tr><td>Query is correct but slow</td><td><code>EXPLAIN ANALYZE</code>: Seq Scan? Missing extension or index?</td></tr>
+  <tr><td>MCP server red / not connecting</td><td>JSON validity, uvx path, cluster ARN, database, region, profile</td></tr>
+</table></div>
+
+<!-- =============================================================== LAB 4.1 -->
+<section class="lab" id="lab-4-1" data-lab="4.1">
+  <header class="lab-head"><span class="lab-badge">BREAK-FIX 4.1</span><h3>Drill Roulette (5 spins)</h3>
+    <div class="meta"><span class="chip">⏱ 60 min</span><span class="chip">🎰 Random</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Spin for a random fault, fix it in ≤ 12 minutes (hints allowed only after minute 8), grade it, then spin again. Five spins completes the lab.</p>
+    <div class="roulette" id="roulette">
+      <div class="wheel">🍊</div>
+      <div class="picked">Ready?</div>
+      <div class="picked-desc">Spin for your next fault.</div>
+      <button class="btn btn-primary" type="button">🎰 Spin the roulette</button>
+      <div class="picked-cmd" style="text-align:left;margin-top:1rem"></div>
+      <p class="spun-list muted" style="margin-top:.6rem"></p>
+    </div>
+    <div class="callout tip">Need a nudge? <code>labctl hint &lt;drill&gt;</code> prints a one-line hint. Use it after 8 minutes, not before.</div>
+  </div>
+</section>
+
+<!-- =============================================================== LAB 4.2 -->
+<section class="lab" id="lab-4-2" data-lab="4.2">
+  <header class="lab-head"><span class="lab-badge">BREAK-FIX 4.2</span><h3>Triple-Fault Speedrun</h3>
+    <div class="meta"><span class="chip">⏱ 30 min</span><span class="chip">🍊🍊🍊 Hard</span><span class="chip">💥 3 faults</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Three faults on three different hops, all at once. Get <code>labctl status</code> fully green in under 30 minutes.</p>
+    <ol class="steps">
+      <li>Reset first, since roulette faults may still be broken: run the <a href="#reset">pre-exam reset</a> block below and wait for <code>labctl status</code> to go all ✔.</li>
+      <li><pre><code class="language-bash">labctl break wrong-secret &amp;&amp; labctl break memory-table &amp;&amp; labctl break kb-id
+date   # start your clock</code></pre></li>
+      <li>Use only <code>labctl status</code>, the console and the AWS CLI. No Terraform until you're done.</li>
+      <li>Grade: <code>labctl check wrong-secret; labctl check memory-table; labctl check kb-id</code></li>
+    </ol>
+    <details class="solution"><summary>Debrief</summary><div class="details-body">All three faults are Lambda environment variables (<code>DB_SECRET_ARN</code>, <code>MEMORY_TABLE</code>, <code>KB_ID</code>). The fastest fix is one console edit of all three, followed by one health check. If you fixed them one CLI call at a time with <code>--environment</code>, did you wipe the other variables?</div></details>
+  </div>
+</section>
+
+<!-- ============================================================== RESET -->
+<h2 id="reset">🔄 Pre-exam reset</h2>
+<p>Start the mock exam from a clean, fully working environment (Day 2's Knowledge Base included):</p>
+<pre data-label="reset"><code class="language-bash">(cd terraform &amp;&amp; terraform apply -auto-approve)   # IAM, Lambda env, Data API back to good
+labctl db-setup schema seed kb-rebuild indexes  # tables, extensions, a fresh vector table, indexes
+labctl kb-sync --full                           # re-ingest every doc into the fresh table
+labctl status                                   # every line ✔ before you start</code></pre>
+<div class="callout gotcha">No Knowledge Base yet (you skipped Lab 2.6)? Challenge 4 then includes <em>creating</em> one from scratch. That's harder, but very exam-like.</div>
+
+<!-- =============================================================== LAB 4.3 -->
+<section class="lab" id="lab-4-3" data-lab="4.3">
+  <header class="lab-head"><span class="lab-badge">BOSS 4.3</span><h3>Mock Exam: Operation Tangerine</h3>
+    <div class="meta"><span class="chip">⏱ 140 min</span><span class="chip">👾 All 7 objectives</span><span class="chip">🧾 Auto-graded</span></div></header>
+  <div class="lab-body">
+    <div class="callout lore"><span class="callout-title">Scenario briefing</span>
+      <p>It's Monday, 08:57. Citrus &amp; Co.'s Black Friday sale starts in a few hours. Overnight, a contractor ran a "cost and security optimization" across the agent platform: they tidied IAM, "upgraded" the vector table, renamed some things, dropped "unused" indexes, switched off "unused" endpoints, and committed a new MCP config for the support engineers.</p>
+      <p>Zest, the customer-intelligence agent, is now useless. Support leadership needs it back before the doors open. You have <strong>140 minutes</strong>.</p></div>
+
+    <ol class="steps">
+      <li>Make sure the <a href="#reset">reset</a> is done and <code>labctl status</code> is all ✔.</li>
+      <li>Start the scenario. This injects every fault. Then start the clock below:
+<pre><code class="language-bash">labctl exam start</code></pre></li>
+      <li>Work through the challenges. Grade as often as you like:
+<pre><code class="language-bash">labctl exam check</code></pre></li>
+      <li>Submit investigation answers when you find them:
+<pre><code class="language-bash">labctl exam answer q1 "&lt;segment&gt;"
+labctl exam answer q2 "TNG-XXXX"</code></pre></li>
+    </ol>
+
+    <div class="exam-console" id="exam-console">
+      <h3>🛰️ Mission clock</h3>
+      <div class="clock">2:20:00</div>
+      <div class="cta-row" style="margin-top:0">
+        <button class="btn btn-primary" type="button" data-exam="start">▶ Start the clock</button>
+        <button class="btn btn-ghost" type="button" data-exam="pause">⏸ Pause</button>
+        <button class="btn btn-ghost" type="button" data-exam="reset">↺ Reset</button>
+      </div>
+      <ul class="challenge-list">
+        <li><label><input type="checkbox" data-ch="c1"><span>1 · Restore the agent's access to Aurora PostgreSQL</span><span class="budget">~15 min</span></label></li>
+        <li><label><input type="checkbox" data-ch="c2"><span>2 · Repair the pgvector document store</span><span class="budget">~20 min</span></label></li>
+        <li><label><input type="checkbox" data-ch="c3"><span>3 · Restore the agent's DynamoDB memory</span><span class="budget">~15 min</span></label></li>
+        <li><label><input type="checkbox" data-ch="c4"><span>4 · Bring the Knowledge Base on Aurora back online</span><span class="budget">~25 min</span></label></li>
+        <li><label><input type="checkbox" data-ch="c5"><span>5 · Configure the Aurora MCP server &amp; investigate (q1)</span><span class="budget">~20 min</span></label></li>
+        <li><label><input type="checkbox" data-ch="c6"><span>6 · Configure the DynamoDB MCP server &amp; inspect state (q2)</span><span class="budget">~15 min</span></label></li>
+        <li><label><input type="checkbox" data-ch="c7"><span>7 · Optimize the agent's product search</span><span class="budget">~15 min</span></label></li>
+      </ul>
+    </div>
+
+    <h3>Challenge guidance</h3>
+    <p class="muted">Like the real exam lab: procedural guidance and success criteria, but no hints. Solutions are in the <a href="#debrief">debrief</a>, which you open after the clock stops.</p>
+    <div class="table-wrap"><table>
+      <tr><th>#</th><th>Guidance</th><th>Success looks like</th></tr>
+      <tr><td>1</td><td>Zest's product and customer tools fail. Restore the agent's ability to query Aurora PostgreSQL using its <em>existing</em> execution role and the designated <em>admin</em> credentials.</td><td>Health: <code>aurora_connect</code> and <code>aurora_products</code> are ok; the Data API is enabled.</td></tr>
+      <tr><td>2</td><td>The KB vector table <code>bedrock_integration.bedrock_kb</code> must match Titan Text Embeddings V2's output, have the indexes Bedrock requires, and be usable by <code>bedrock_user</code>.</td><td>vector(1024); HNSW (cosine) + GIN text index; bedrock_user can SELECT/INSERT/UPDATE/DELETE.</td></tr>
+      <tr><td>3</td><td>The agent must store and recall conversation turns in the memory table, with least-privilege access.</td><td><code>remember</code> → <code>recall</code> round-trip works; role allows PutItem and Query on the table.</td></tr>
+      <tr><td>4</td><td>A Knowledge Base using the Aurora table must complete a sync of the S3 docs, and the agent's <code>search_docs</code> tool must return results.</td><td>KB role can read the bedrock_user secret; latest ingestion job COMPLETE; Lambda KB_ID set and working.</td></tr>
+      <tr><td>5</td><td>Fix the Postgres server in <code>labs/mcp/broken-mcp.json</code> so it connects read-only to <code>agentdb</code>. Load it in your MCP client and use it to find the <strong>customer segment with the highest total order amount</strong>.</td><td>Config correct; <code>labctl exam answer q1 "&lt;segment&gt;"</code> is right.</td></tr>
+      <tr><td>6</td><td>Fix the DynamoDB server in the same file. Use it to read the <strong>escalation ticket ID</strong> in the STATE item of session <code>sess-escalation-042</code>.</td><td>Config region correct; <code>labctl exam answer q2 "TNG-…"</code> is right.</td></tr>
+      <tr><td>7</td><td>Product search is too slow for the sale. Make both search shapes (name only, and category + name) avoid full scans of <code>products</code>.</td><td>No <code>Seq Scan on products</code>; agent search &lt; 1.5 s.</td></tr>
+    </table></div>
+    <div class="callout exam">The mock exam passes at 70%, 5 of 7 challenges. AWS doesn't publish the real exam lab's scoring. Aim for 7/7 with time to spare.</div>
+  </div>
+</section>
+
+<!-- ============================================================ DEBRIEF -->
+<h2 id="debrief">🔍 Debrief: open after the clock stops</h2>
+<details class="solution"><summary>Challenge 1: Aurora access (2 faults)</summary><div class="details-body">
+  <ul>
+    <li><strong>Data API disabled</strong> → <code>aws rds enable-http-endpoint --resource-arn "$CLUSTER_ARN"</code> (or Modify cluster → RDS Data API).</li>
+    <li><strong>Lambda <code>DB_SECRET_ARN</code> → bedrock_user secret</strong> → point it back at the admin secret.</li>
+  </ul>
+  <p>Common mistake: granting the role access to the bedrock_user secret. IAM would pass, but bedrock_user can't read <code>products</code>.</p></div></details>
+<details class="solution"><summary>Challenge 2: pgvector store (1 fault, 3 symptoms)</summary><div class="details-body">
+  <p>The table was recreated as <code>vector(1536)</code> with no indexes and no grants. Fix it in place (the table is empty). Run each statement separately, in the Query Editor or as one <code>labctl sql "…"</code> each:</p>
+<pre><code class="language-sql">ALTER TABLE bedrock_integration.bedrock_kb ALTER COLUMN embedding TYPE vector(1024);
+CREATE INDEX ON bedrock_integration.bedrock_kb USING hnsw (embedding vector_cosine_ops) WITH (ef_construction = 256);
+CREATE INDEX ON bedrock_integration.bedrock_kb USING gin (to_tsvector('simple', chunks));
+CREATE INDEX ON bedrock_integration.bedrock_kb USING gin (custom_metadata);
+GRANT SELECT, INSERT, UPDATE, DELETE ON bedrock_integration.bedrock_kb TO bedrock_user;</code></pre></div></details>
+<details class="solution"><summary>Challenge 3: DynamoDB memory (2 faults)</summary><div class="details-body">
+  <ul>
+    <li><code>MEMORY_TABLE</code> had a <code>-v2</code> suffix → the real table name.</li>
+    <li><code>AgentMemory</code> statement reduced to GetItem → restore PutItem, Query, UpdateItem, DeleteItem, BatchWriteItem on the table and <code>/index/*</code>.</li>
+  </ul></div></details>
+<details class="solution"><summary>Challenge 4: Knowledge Base (2 faults + re-sync)</summary><div class="details-body">
+  <ul>
+    <li><code>KbSecret</code> statement removed from the KB role → add <code>secretsmanager:GetSecretValue</code> on the bedrock_user secret.</li>
+    <li>Lambda <code>KB_ID</code> emptied → set it to your KB's ID.</li>
+    <li>After Challenge 2, <strong>force a full re-ingest</strong>. The table was dropped, but the S3 docs didn't change, so a plain incremental sync writes nothing. Change the docs (<code>labctl kb-sync --full</code>) or delete and re-create the data source.</li>
+  </ul>
+  <p>Common mistakes: forgetting to sync at all, and trusting a plain sync's <code>COMPLETE</code>. The grader checks the latest job <em>and</em> that the table has rows.</p></div></details>
+<details class="solution"><summary>Challenge 5: Aurora MCP server</summary><div class="details-body">
+  <p><code>--resource_arn</code> was the writer <em>instance</em> ARN → cluster ARN. <code>--database postgres</code> → <code>agentdb</code>. <code>--region</code> and <code>AWS_REGION</code> → your lab region.</p>
+  <p>Investigation SQL your assistant should run:</p>
+<pre><code class="language-sql">SELECT c.segment, round(sum(o.amount)) AS total
+FROM orders o JOIN customers c ON c.customer_id = o.customer_id
+GROUP BY c.segment ORDER BY total DESC LIMIT 1;</code></pre></div></details>
+<details class="solution"><summary>Challenge 6: DynamoDB MCP server</summary><div class="details-body">
+  <p><code>AWS_REGION</code> pointed at the wrong region. Fix it, then read <code>session_id = sess-escalation-042, sk = STATE</code> → <code>escalation_ticket</code>.
+  Watch out for the decoy session <code>sess-escalation-024</code>!</p></div></details>
+<details class="solution"><summary>Challenge 7: Product search</summary><div class="details-body">
+<pre><code class="language-sql">CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_products_name_trgm ON products USING gin (name gin_trgm_ops);
+CREATE INDEX idx_products_category_rating ON products (category, rating DESC, product_id);
+ANALYZE products;</code></pre></div></details>
+
+<!-- =============================================================== LAB 4.4 -->
+<section class="lab" id="lab-4-4" data-lab="4.4">
+  <header class="lab-head"><span class="lab-badge">LAB 4.4</span><h3>Debrief &amp; Teardown</h3>
+    <div class="meta"><span class="chip">⏱ 20 min</span><span class="chip">🎓 Next steps</span></div></header>
+  <div class="lab-body">
+    <p class="lab-goal">🎯 Turn your mock score into a study plan, clean up your account, and book the real thing.</p>
+    <ol class="steps">
+      <li>For each objective you missed, redo its drill once more: <code>labctl drills</code>.</li>
+      <li>Rate your confidence 1–5 for each of the <a href="index.html#objectives">7 objectives</a>. Anything below 4 → re-read that module.</li>
+      <li>Tear down (delete console-created Knowledge Bases first):
+<pre><code class="language-bash">aws bedrock-agent list-knowledge-bases --query 'knowledgeBaseSummaries[].[knowledgeBaseId,name]' --output table
+# aws bedrock-agent delete-knowledge-base --knowledge-base-id &lt;id&gt;    # for the ones you created
+(cd terraform &amp;&amp; terraform destroy)</code></pre></li>
+      <li>Enroll in <a href="https://skillbuilder.aws/learn/2MHE4K7STM/aws-databases-for-agentic-ai-demonstrated/NYCNC3CU6X" target="_blank" rel="noopener">AWS Databases for Agentic AI Demonstrated</a> on Skill Builder. It's free.</li>
+    </ol>
+    <div class="checkpoint"><code>terraform destroy</code> finished and your exam lab is booked. Go get that badge! 🏅</div>
+  </div>
+</section>
+
+<!-- ============================================================== QUIZ -->
+<h2 id="quiz">⚡ Lightning round</h2>
+<div class="quiz">
+  <div class="q" data-q="d4q1" data-answer="2">
+    <p class="q-text">You fixed the KB role and the recreated vector table, ran a sync, and it says COMPLETE, yet <code>search_docs</code> returns nothing. Why?</p>
+    <div class="options"><button class="opt">The Aurora writer needs a reboot</button><button class="opt">The S3 bucket must be recreated</button><button class="opt">Sync is incremental: unchanged docs weren't re-ingested into the empty table</button><button class="opt">Lambda needs more memory</button></div>
+    <p class="explain">Bedrock still believes the docs are indexed. Change the docs (or recreate the data source) to force a full re-ingest.</p>
+  </div>
+  <div class="q" data-q="d4q2" data-answer="0">
+    <p class="q-text">Two Lambda env vars are wrong. Fastest safe fix?</p>
+    <div class="options"><button class="opt">Edit both in the console in one save, then run a health check</button><button class="opt">Two <code>update-function-configuration --environment</code> calls with one var each</button><button class="opt">Redeploy the function code</button><button class="opt">Create a new function</button></div>
+    <p class="explain">Each CLI call with a one-var map would wipe the others.</p>
+  </div>
+  <div class="q" data-q="d4q3" data-answer="3">
+    <p class="q-text">A challenge says "least privilege". The agent needs Query on a GSI. Which resource do you add?</p>
+    <div class="options"><button class="opt"><code>*</code></button><button class="opt"><code>arn:aws:dynamodb:*:*:table/*</code></button><button class="opt">The Lambda ARN</button><button class="opt"><code>arn:aws:dynamodb:REGION:ACCT:table/NAME/index/*</code></button></div>
+    <p class="explain">Scope it to that table's indexes.</p>
+  </div>
+  <div class="q" data-q="d4q4" data-answer="1">
+    <p class="q-text"><code>CREATE INDEX … USING gin (name gin_trgm_ops)</code> fails: <em>operator class "gin_trgm_ops" does not exist</em>. Fix?</p>
+    <div class="options"><button class="opt">Use <code>USING btree</code></button><button class="opt"><code>CREATE EXTENSION pg_trgm;</code> first</button><button class="opt">Restart the cluster</button><button class="opt">Enable the Data API</button></div>
+    <p class="explain">The opclass ships with the pg_trgm extension.</p>
+  </div>
+  <div class="q" data-q="d4q5" data-answer="2">
+    <p class="q-text">Twenty minutes left and two challenges untouched. Best move?</p>
+    <div class="options"><button class="opt">Polish the IAM policies you already fixed</button><button class="opt">Start over with a fresh approach</button><button class="opt">Read both, do the faster one fully, verify it, then attempt the other</button><button class="opt">Stop and review notes</button></div>
+    <p class="explain">One fully verified challenge beats two half-done ones.</p>
+  </div>
+</div>
+
+<div class="mission-nav">
+  <a href="day3.html"><small>← Previous mission</small><strong>Day 3 · Memory Lane &amp; the MCP Bridge</strong></a>
+  <a class="next" href="cheatsheet.html"><small>Keep handy →</small><strong>Exam cheat sheet 📇</strong></a>
+</div>
+
+  </main>
+</div>
+
+<div id="site-footer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

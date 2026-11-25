@@ -1,0 +1,22 @@
+# Copy to terraform.tfvars and edit.
+
+region     = "us-east-1"
+student_id = "student1" # make it unique if several people share one account
+
+# Aurora Serverless v2 capacity. 0.5 keeps it warm during class.
+aurora_min_acu = 0.5
+aurora_max_acu = 4
+
+# Day 2 / Lab 2.6: after you create the Knowledge Base in the console,
+# paste its ID here and run `terraform apply` to wire it into the Lambda.
+knowledge_base_id = ""
+
+# Or let Terraform build the KB (only after `labctl db-setup kb`):
+create_knowledge_base = false
+
+# Claude in Amazon Bedrock model for the agent's `ask` action.
+agent_model_id    = "anthropic.claude-opus-5-5"
+fallback_model_id = "anthropic.claude-opus-4-8"
+
+# Set false if you can't run pip locally; everything except `ask` still works.
+enable_claude_agent = true

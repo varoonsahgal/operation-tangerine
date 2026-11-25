@@ -1,0 +1,3 @@
+# Anthropic SDK with the Bedrock extra (provides AnthropicBedrockMantle for
+# Claude in Amazon Bedrock). Pin a version here for reproducible classes.
+anthropic[bedrock]

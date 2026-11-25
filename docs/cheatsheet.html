@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Exam Cheat Sheet</title>
+  <meta name="description" content="One-page reference for the AWS Databases for Agentic AI Demonstrated exam lab: Aurora Data API, pgvector, Bedrock Knowledge Bases on Aurora, DynamoDB memory, MCP servers, query optimization and IAM.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<section class="day-hero">
+  <span class="eyebrow">📇 Keep this open in a tab</span>
+  <h1>Exam cheat sheet</h1>
+  <p>The commands, SQL, IAM actions and error → fix mappings from all four days, on one page.</p>
+</section>
+
+<div class="page-grid">
+  <aside class="toc" id="toc"></aside>
+  <main>
+
+<h2 id="aurora">🐘 Aurora &amp; the Data API</h2>
+<pre><code class="language-bash"># Is the Data API on? Which ARN is the CLUSTER?
+aws rds describe-db-clusters --db-cluster-identifier &lt;id&gt; --query 'DBClusters[0].[DBClusterArn,HttpEndpointEnabled]'
+
+# Turn it on (Serverless v2 / provisioned)
+aws rds enable-http-endpoint --resource-arn &lt;cluster-arn&gt;
+
+# Run SQL
+aws rds-data execute-statement --resource-arn &lt;cluster-arn&gt; --secret-arn &lt;secret-arn&gt; \
+  --database agentdb --sql "SELECT 1" --format-records-as JSON</code></pre>
+<p><strong>Agent access checklist:</strong> Data API on · <code>rds-data:ExecuteStatement</code> on the cluster ARN · <code>secretsmanager:GetSecretValue</code> on the secret · correct cluster ARN, secret ARN and database in config · DB user exists with GRANTs.</p>
+
+<h2 id="pgvector">🧭 pgvector</h2>
+<pre><code class="language-sql">CREATE EXTENSION IF NOT EXISTS vector;                       -- name is "vector"
+SELECT extversion FROM pg_extension WHERE extname = 'vector';
+
+-- column dims must equal the model's (Titan Text Embeddings V2 = 1024 by default)
+SELECT format_type(atttypid, atttypmod) FROM pg_attribute
+WHERE attrelid = 'bedrock_integration.bedrock_kb'::regclass AND attname = 'embedding';
+
+-- operator ↔ opclass:  <=> cosine ↔ vector_cosine_ops · <-> L2 ↔ vector_l2_ops · <#> IP ↔ vector_ip_ops
+CREATE INDEX ON t USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+SELECT id FROM t ORDER BY embedding &lt;=&gt; :q LIMIT 5;          -- needs ORDER BY … LIMIT to use the index
+SET hnsw.ef_search = 100;                                     -- higher recall, slower</code></pre>
+
+<h2 id="kb">📚 Bedrock Knowledge Base on Aurora</h2>
+<pre><code class="language-sql">CREATE SCHEMA IF NOT EXISTS bedrock_integration;
+CREATE ROLE bedrock_user WITH LOGIN PASSWORD '…';             -- password = the KB secret's
+GRANT USAGE ON SCHEMA bedrock_integration TO bedrock_user;
+CREATE TABLE bedrock_integration.bedrock_kb (
+  id uuid PRIMARY KEY, embedding vector(1024), chunks text, metadata json, custom_metadata jsonb);
+GRANT SELECT, INSERT, UPDATE, DELETE ON bedrock_integration.bedrock_kb TO bedrock_user;
+CREATE INDEX ON bedrock_integration.bedrock_kb USING hnsw (embedding vector_cosine_ops) WITH (ef_construction = 256);
+CREATE INDEX ON bedrock_integration.bedrock_kb USING gin (to_tsvector('simple', chunks));
+CREATE INDEX ON bedrock_integration.bedrock_kb USING gin (custom_metadata);</code></pre>
+<div class="table-wrap"><table>
+  <tr><th>KB console field</th><th>Value</th></tr>
+  <tr><td>Aurora DB cluster ARN</td><td><code>arn:aws:rds:…:cluster:…</code></td></tr>
+  <tr><td>Database / Table</td><td><code>agentdb</code> / <code>bedrock_integration.bedrock_kb</code></td></tr>
+  <tr><td>Credentials secret</td><td>bedrock_user secret (keys <code>username</code>, <code>password</code>)</td></tr>
+  <tr><td>Vector / Text / Metadata / PK / Custom metadata</td><td><code>embedding</code> / <code>chunks</code> / <code>metadata</code> / <code>id</code> / <code>custom_metadata</code></td></tr>
+</table></div>
+<pre><code class="language-bash">aws bedrock-agent start-ingestion-job --knowledge-base-id &lt;kb&gt; --data-source-id &lt;ds&gt;
+aws bedrock-agent list-ingestion-jobs --knowledge-base-id &lt;kb&gt; --data-source-id &lt;ds&gt; \
+  --sort-by attribute=STARTED_AT,order=DESCENDING --max-results 1
+aws bedrock-agent-runtime retrieve --knowledge-base-id &lt;kb&gt; --retrieval-query text="return window"</code></pre>
+<p><strong>Sync is incremental.</strong> After recreating the vector table, unchanged docs are <em>not</em> re-ingested: change the docs or recreate the data source, then confirm <code>SELECT count(*) FROM bedrock_integration.bedrock_kb</code> &gt; 0.</p>
+
+<h2 id="ddb">⚡ DynamoDB memory</h2>
+<pre><code class="language-bash">aws dynamodb describe-table --table-name &lt;t&gt; --query 'Table.[KeySchema,GlobalSecondaryIndexes[].IndexName]'
+aws dynamodb describe-time-to-live --table-name &lt;t&gt;
+aws dynamodb query --table-name &lt;t&gt; --key-condition-expression "session_id = :s AND begins_with(sk, :p)" \
+  --expression-attribute-values '{":s":{"S":"sess-1"},":p":{"S":"MSG#"}}' --no-scan-index-forward --limit 10
+aws dynamodb get-item --table-name &lt;t&gt; --key '{"session_id":{"S":"sess-1"},"sk":{"S":"STATE"}}' --consistent-read</code></pre>
+<p>TTL = Number, epoch <strong>seconds</strong>. GSIs need <code>table/NAME/index/*</code> in IAM.</p>
+
+<h2 id="mcp">🔌 MCP servers</h2>
+<pre data-label="fragment: paste inside &quot;mcpServers&quot;"><code class="language-json">"awslabs.postgres-mcp-server": { "command": "uvx", "args": ["awslabs.postgres-mcp-server@latest",
+   "--resource_arn", "&lt;CLUSTER arn&gt;", "--secret_arn", "&lt;secret arn&gt;", "--database", "agentdb",
+   "--region", "&lt;region&gt;", "--readonly", "True"],
+   "env": { "AWS_PROFILE": "default", "AWS_REGION": "&lt;region&gt;" } },
+"awslabs.dynamodb-mcp-server": { "command": "uvx", "args": ["awslabs.dynamodb-mcp-server@latest"],
+   "env": { "DDB-MCP-READONLY": "true", "AWS_PROFILE": "default", "AWS_REGION": "&lt;region&gt;" } }</code></pre>
+<p>VS Code uses the <code>servers</code> key with <code>"type": "stdio"</code>. Test any server outside an IDE: <code>npx @modelcontextprotocol/inspector -- uvx &lt;server&gt; &lt;args…&gt;</code>.</p>
+
+<h2 id="perf">🏎️ Query optimization</h2>
+<pre><code class="language-sql">EXPLAIN (ANALYZE, BUFFERS) SELECT … ;               -- look for Seq Scan + "Rows Removed by Filter"
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX ON products USING gin (name gin_trgm_ops);          -- ILIKE '%x%'
+CREATE INDEX ON products (category, rating DESC, product_id);     -- WHERE category = ? ORDER BY rating DESC LIMIT n
+ANALYZE products;
+SELECT calls, mean_exec_time, left(query, 80) FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 5;</code></pre>
+
+<h2 id="iam">🛡️ IAM actions by principal</h2>
+<div class="table-wrap"><table>
+  <tr><th>Agent (Lambda) role</th><th>KB service role</th></tr>
+  <tr><td><code>rds-data:ExecuteStatement</code> (+Batch, transactions) → cluster<br>
+    <code>secretsmanager:GetSecretValue</code> → admin secret<br>
+    <code>dynamodb:GetItem/PutItem/UpdateItem/DeleteItem/Query/BatchWriteItem</code> → table + <code>/index/*</code><br>
+    <code>bedrock:Retrieve</code> → knowledge-base/*<br>
+    <code>bedrock:InvokeModel</code> → embedding model<br>
+    <code>bedrock-mantle:CreateInference</code> → Claude</td>
+  <td>Trust: <code>bedrock.amazonaws.com</code> + SourceAccount/SourceArn<br>
+    <code>bedrock:InvokeModel</code> → embedding model<br>
+    <code>rds:DescribeDBClusters</code> → cluster<br>
+    <code>rds-data:ExecuteStatement</code>, <code>BatchExecuteStatement</code> → cluster<br>
+    <code>secretsmanager:GetSecretValue</code> → bedrock_user secret<br>
+    <code>s3:ListBucket</code> → bucket · <code>s3:GetObject</code> → bucket/*</td></tr>
+</table></div>
+
+<h2 id="errors">🚨 Error → fix</h2>
+<div class="table-wrap"><table>
+  <tr><th>Error</th><th>Fix</th></tr>
+  <tr><td><span class="err">HttpEndpoint is not enabled for cluster</span></td><td class="fix">enable-http-endpoint on the cluster</td></tr>
+  <tr><td><span class="err">not authorized to perform: rds-data:ExecuteStatement</span></td><td class="fix">Add the action on the cluster ARN to the caller's role</td></tr>
+  <tr><td><span class="err">not authorized to perform: secretsmanager:GetSecretValue</span></td><td class="fix">Wrong secret configured, or missing permission on the right one</td></tr>
+  <tr><td><span class="err">password authentication failed for user</span></td><td class="fix">DB role missing, or the password doesn't match the secret</td></tr>
+  <tr><td><span class="err">permission denied for table / schema</span></td><td class="fix">GRANT USAGE on schema + table privileges</td></tr>
+  <tr><td><span class="err">expected 1536 dimensions, not 1024</span></td><td class="fix">ALTER column to vector(1024) (if empty) or recreate</td></tr>
+  <tr><td><span class="err">operator class "gin_trgm_ops" does not exist</span></td><td class="fix">CREATE EXTENSION pg_trgm</td></tr>
+  <tr><td><span class="err">type "vector" does not exist</span></td><td class="fix">CREATE EXTENSION vector</td></tr>
+  <tr><td><span class="err">ResourceNotFoundException: Requested resource not found</span></td><td class="fix">Table name / region in config</td></tr>
+  <tr><td><span class="err">AccessDenied … dynamodb:Query … /index/customer-index</span></td><td class="fix">Add <code>table/NAME/index/*</code></td></tr>
+  <tr><td><span class="err">Ingestion job FAILED</span></td><td class="fix">Read failureReasons → KB role, table shape, grants, then re-sync</td></tr>
+  <tr><td><span class="err">Sync COMPLETE, 0 rows in the vector table</span></td><td class="fix">Force a full re-ingest (sync is incremental)</td></tr>
+  <tr><td><span class="err">AccessDenied naming a table that isn't yours</span></td><td class="fix">Wrong table name in config (IAM is checked before the table lookup)</td></tr>
+  <tr><td><span class="err">Task timed out after N seconds</span></td><td class="fix">Network path (VPC endpoints/NAT) or a slow query; check the timeout</td></tr>
+  <tr><td><span class="err">MCP: spawn uvx ENOENT</span></td><td class="fix">Use the absolute uvx path in the config</td></tr>
+</table></div>
+
+<h2 id="labctl">🕹️ labctl</h2>
+<pre><code class="language-bash">eval "$(labctl env)"              # export $CLUSTER_ARN, $LAMBDA_NAME, …
+labctl status                     # resources + agent health
+labctl invoke health              # any agent action, optional JSON payload
+labctl sql "SELECT 1"             # one statement through the Data API
+labctl drills                     # list faults
+labctl break &lt;drill&gt;              # inject one
+labctl check &lt;drill&gt;              # grade the fix (exit 1 until it passes)
+labctl hint &lt;drill&gt;               # one-line nudge
+labctl kb-sync --full             # force a full Knowledge Base re-ingest
+labctl exam start                 # mock exam: inject every fault
+labctl exam answer q1 "…"         # submit an investigation answer
+labctl exam check                 # score the 7 challenges
+labctl mcp-json                   # known-good MCP config (spoiler)</code></pre>
+
+  </main>
+</div>
+
+<div id="site-footer"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
